@@ -134,9 +134,84 @@ def index():
             ul { margin: 0; padding-left: 20px; color: #cbd5e1; font-size: 0.95rem; }
             li { margin-bottom: 5px; }
 
+            /* ========= 新增：設定按鈕 + Editor 視窗 ========= */
+            .settings-button {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+                z-index: 2000;
+                border: none;
+                background: #333;
+                color: #fff;
+                border-radius: 4px;
+                padding: 6px 10px;
+                cursor: pointer;
+                font-size: 16px;
+            }
+
+            .editor-modal {
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100vw;
+                height: 100vh;
+                background: rgba(0, 0, 0, 0.6);
+                z-index: 1999;
+                display: none; /* 起始隱藏 */
+                align-items: center;
+                justify-content: center;
+            }
+
+            .editor-modal-content {
+                width: 80vw;
+                height: 80vh;
+                background: #1e1e1e;
+                border-radius: 6px;
+                box-shadow: 0 0 10px #000;
+                display: flex;
+                flex-direction: column;
+            }
+
+            .editor-modal-header {
+                height: 40px;
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 0 10px;
+                background: #222;
+                color: #fff;
+                font-size: 14px;
+            }
+
+            .editor-close-btn {
+                border: none;
+                background: transparent;
+                color: #fff;
+                cursor: pointer;
+                font-size: 16px;
+            }
         </style>
     </head>
     <body>
+
+        <!-- 新增：右上角設定按鈕 -->
+        <button id="settings-btn" class="settings-button">⚙</button>
+
+        <!-- 新增：Editor 彈出視窗（iframe 載入 stledit.gyke.net） -->
+        <div id="editor-modal" class="editor-modal">
+          <div class="editor-modal-content">
+            <div class="editor-modal-header">
+              <span>Algorithm Editor (logic.py)</span>
+              <button id="editor-close" class="editor-close-btn">X</button>
+            </div>
+            <iframe
+              id="editor-frame"
+              src="http://stledit.gyke.net/"
+              style="width:100%;height:100%;border:none;"
+              title="Logic Editor"
+            ></iframe>
+          </div>
+        </div>
 
         <div class="main-container">
             <div class="video-section">
@@ -265,6 +340,29 @@ def index():
                 this.style.display='none';
                 setTimeout(() => { img.src = '/video_feed?' + new Date().getTime(); }, 2000);
             };
+
+            // ========= 新增：設定按鈕開關 Editor =========
+            document.addEventListener('DOMContentLoaded', function () {
+                const settingsBtn = document.getElementById('settings-btn');
+                const editorModal = document.getElementById('editor-modal');
+                const editorClose = document.getElementById('editor-close');
+
+                if (settingsBtn && editorModal && editorClose) {
+                    settingsBtn.addEventListener('click', function () {
+                        editorModal.style.display = 'flex';
+                    });
+
+                    editorClose.addEventListener('click', function () {
+                        editorModal.style.display = 'none';
+                    });
+
+                    editorModal.addEventListener('click', function (e) {
+                        if (e.target === editorModal) {
+                            editorModal.style.display = 'none';
+                        }
+                    });
+                }
+            });
         </script>
     </body>
     </html>
