@@ -12,7 +12,7 @@ target_classes = [0, 2, 3, 5, 7]
 
 # ✅ 新增：載入輪椅偵測模型
 print("Loading Wheelchair Detection Model...")
-wheelchair_model = YOLO('wheelchair_model/weights/best.pt')  # 你的模型路徑
+wheelchair_model = YOLO('wheelchair.pt')  # 你的模型路徑
 
 XOR_KEY = b"MyIoTKey2026"
 
