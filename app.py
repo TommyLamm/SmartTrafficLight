@@ -195,7 +195,8 @@ def index():
                     .then(data => {
                         document.getElementById('val-persons').innerText = data.persons;
                         document.getElementById('val-cars').innerText = data.cars;
-                        
+                        document.getElementById('val-wheelchairs').innerText = data.wheelchairs || 0;
+                        if(data.light_state === "PED_WHEELCHAIR") uiState = "♿ Wheelchair Priority (Extended)";
                         // Proper Mapping for UI Text
                         let uiState = "⏳ Awaiting AI Detection...";
                         if(data.light_state === "CAR_GREEN") uiState = "🟢 Green - Vehicles (N/S)";
