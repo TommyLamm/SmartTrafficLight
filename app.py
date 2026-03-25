@@ -151,6 +151,7 @@ def index():
                 <div class="panel">
                     <h3>Traffic Status</h3>
                     <p>Vehicles: <span id="val-cars">0</span> | Pedestrians: <span id="val-persons">0</span></p>
+                    <p>Wheelchairs: <span id="val-wheelchairs">0</span></p>
                 </div>
 
                 <div class="panel">
