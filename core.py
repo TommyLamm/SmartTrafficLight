@@ -7,12 +7,7 @@ from ultralytics import YOLO
 import logic  
 
 print("Loading YOLO Engine...")
-model = YOLO('yolov8n.pt')
-target_classes = [0, 2, 3, 5, 7]
-
-# ✅ 新增：載入輪椅偵測模型
-print("Loading Wheelchair Detection Model...")
-wheelchair_model = YOLO('wheelchair.pt')  # 你的模型路徑
+model = YOLO('person_wheelchair_personWheelchair.pt')
 
 XOR_KEY = b"MyIoTKey2026"
 
@@ -31,6 +26,17 @@ sys_state = {
     "detection": True
 }
 
+def _class_name(names, cls_id):
+    cls_id = int(cls_id)
+    if isinstance(names, dict):
+        return str(names.get(cls_id, cls_id))
+    if isinstance(names, (list, tuple)) and 0 <= cls_id < len(names):
+        return str(names[cls_id])
+    return str(cls_id)
+
+def _normalize_label(label):
+    return "".join(ch for ch in str(label).lower() if ch.isalnum())
+
 def process_traffic_data(obfuscated_bytes):
     global latest_frame
 
@@ -38,7 +44,7 @@ def process_traffic_data(obfuscated_bytes):
         return {
             "cars": sys_state["cars"],
             "persons": sys_state["persons"],
-            "wheelchairs": sys_state["wheelchairs"],  # ✅ 新增
+            "wheelchairs": sys_state["wheelchairs"],
             "command": "KEEP"
         }
 
@@ -49,20 +55,10 @@ def process_traffic_data(obfuscated_bytes):
     image = Image.open(io.BytesIO(decrypted_bytes))
 
     with infer_lock:
-        # 原有車輛/行人模型
-        results = model.predict(source=image, imgsz=800, classes=target_classes, save=False, conf=0.25)
-        # ✅ 新增：輪椅模型（對同一張圖跑第二次推理）
-        wheelchair_results = wheelchair_model.predict(source=image, imgsz=640, save=False, conf=0.45)
+        results = model.predict(source=image, imgsz=640, save=False, conf=0.25)
 
-    # 串流畫面（疊加輪椅偵測框）
+    # 串流畫面（顯示三類標註）
     annotated_img = results[0].plot()
-    # ✅ 將輪椅偵測框也疊加到畫面上
-    for r in wheelchair_results:
-        for box in r.boxes:
-            x1, y1, x2, y2 = map(int, box.xyxy[0])
-            cv2.rectangle(annotated_img, (x1, y1), (x2, y2), (255, 165, 0), 2)
-            cv2.putText(annotated_img, f"Wheelchair {float(box.conf[0]):.2f}",
-                        (x1, y1 - 8), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 165, 0), 2)
 
     ret, buffer = cv2.imencode('.jpg', annotated_img)
     if ret:
@@ -71,26 +67,25 @@ def process_traffic_data(obfuscated_bytes):
             frame_condition.notify_all()
 
     # 計數
-    p_count, v_count, w_count = 0, 0, 0
+    p_count, w_count = 0, 0
     for r in results:
-        for cls_id in r.boxes.cls.cpu().numpy():
-            if cls_id == 0: p_count += 1
-            else: v_count += 1
-
-    # ✅ 輪椅計數
-    # ✅ 修正：只計算 class 1 (wheelchair)
-    for r in wheelchair_results:
+        if r.boxes is None:
+            continue
         for cls_id in r.boxes.cls.cpu().numpy().astype(int):
-            if cls_id == 1:
+            label = _normalize_label(_class_name(r.names, cls_id))
+            if label == "person":
+                p_count += 1
+            elif label in {"peoplewheelchair", "personwheelchair", "peopleinwheelchair", "personinwheelchair"}:
+                p_count += 1
                 w_count += 1
+            # 空輪椅（wheelchair）不計入輪椅優先
 
     sys_state["persons"] = p_count
-    sys_state["cars"] = v_count
-    sys_state["wheelchairs"] = w_count  # ✅ 新增
+    sys_state["wheelchairs"] = w_count
 
     if sys_state["mode"] == "AUTO":
-        # ✅ 將 w_count 傳入決策函式
-        cmd, new_state = logic.decide_light(p_count, v_count, w_count, sys_state["light_state"])
+        # cars 由另一個攝像頭流程維護；此流程只提供行人/輪椅資訊
+        cmd, new_state = logic.decide_light(p_count, sys_state["cars"], w_count, sys_state["light_state"])
         sys_state["command"] = cmd
         sys_state["light_state"] = new_state
     else:
@@ -104,6 +99,6 @@ def process_traffic_data(obfuscated_bytes):
     return {
         "cars": sys_state["cars"],
         "persons": sys_state["persons"],
-        "wheelchairs": sys_state["wheelchairs"],  # ✅ 新增
+        "wheelchairs": sys_state["wheelchairs"],
         "command": sys_state["command"]
     }
