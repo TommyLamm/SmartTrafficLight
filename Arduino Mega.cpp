@@ -75,6 +75,10 @@ void loop() {
         else if (cmd == "PED_GREEN_20") {
           Serial.println(">> [CMD] 請求行人過馬路 (20秒)");
           requestPedestrianCrossing(20000); 
+        }   
+        else if (cmd == "PED_GREEN_30") {
+          Serial.println(">> [CMD] 輪椅使用者過馬路 (30秒優先)");
+          requestPedestrianCrossing(30000);
         }
         else if (cmd == "KEEP") {
           // 純心跳包，什麼都不做
