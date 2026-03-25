@@ -1,12 +1,11 @@
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
-#include <ArduinoJson.h>
 
 const char *ssid = "";
 const char *password = "";
-const String serverName = ""; 
-const char* XOR_KEY = ""; 
+const String serverName = "http://stl.gyke.net/detect_car";
+const char* XOR_KEY = "MyIoTKey2026"; 
 
 // 不再需要定義 MEGA_TX/RX，因為直接用 TX0/RX0 (Serial)
 #define PWDN_GPIO_NUM    -1
@@ -123,24 +122,7 @@ void loop() {
 
     int httpResponseCode = http.POST(fb->buf, fb->len);
 
-    if (httpResponseCode > 0) {
-      String response = http.getString();
-      DynamicJsonDocument doc(256);
-      DeserializationError error = deserializeJson(doc, response);
-
-      if (!error) {
-        const char* cmd = doc["command"];
-        if (cmd) {
-            // ==========================================
-            // 【關鍵修改】發送指令時加上 [] 包裹
-            // 這樣 Mega 就能從 TX0 的雜訊中過濾出指令
-            // ==========================================
-            Serial.print("[");
-            Serial.print(cmd);
-            Serial.println("]");
-        }
-      } 
-    } else {
+    if (httpResponseCode <= 0) {
       wifiClient.stop(); 
     }
 

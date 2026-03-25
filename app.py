@@ -13,21 +13,54 @@ LOGIC_PATH = os.path.join(BASE_DIR, 'logic.py')
 def detect_all():
     try:
         if not request.data: return jsonify({"error": "No Data"}), 400
-        return jsonify(core.process_traffic_data(request.data)), 200
+        return jsonify(core.process_legacy_detect_all(request.data)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def generate_frames():
+@app.route('/detect_person', methods=['POST'])
+def detect_person():
+    try:
+        if not request.data: return jsonify({"error": "No Data"}), 400
+        return jsonify(core.process_person_data(request.data)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/detect_car', methods=['POST'])
+def detect_car():
+    try:
+        if not request.data: return jsonify({"error": "No Data"}), 400
+        return jsonify(core.process_car_data(request.data)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def generate_frames(get_frame, condition):
     while True:
-        with core.frame_condition:
-            core.frame_condition.wait()
-            frame = core.latest_frame
+        with condition:
+            condition.wait()
+            frame = get_frame()
         if frame is not None:
             yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 @app.route('/video_feed')
 def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(
+        generate_frames(lambda: core.latest_frame_person, core.frame_condition_person),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
+
+@app.route('/video_feed_person')
+def video_feed_person():
+    return Response(
+        generate_frames(lambda: core.latest_frame_person, core.frame_condition_person),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
+
+@app.route('/video_feed_car')
+def video_feed_car():
+    return Response(
+        generate_frames(lambda: core.latest_frame_car, core.frame_condition_car),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
 
 @app.route('/stats')
 def stats():
@@ -103,8 +136,24 @@ def index():
 
             .panel-title { color: #38bdf8; font-size: 1.1rem; font-weight: bold; margin-bottom: 15px; }
             .video-section { padding-top: 5px; }
+            .video-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+            .camera-card {
+                background-color: #27344a;
+                border-radius: 6px;
+                padding: 10px;
+            }
+            .camera-title {
+                color: #cbd5e1;
+                font-size: 0.95rem;
+                margin-bottom: 8px;
+                font-weight: 600;
+            }
             .video-box {
-                background-color: #334155; height: 500px; border-radius: 4px; 
+                background-color: #334155; height: 320px; border-radius: 4px; 
                 display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
             }
             .video-box img { width: 100%; height: 100%; object-fit: cover; position: absolute; z-index: 2; }
@@ -215,10 +264,22 @@ def index():
 
         <div class="main-container">
             <div class="video-section">
-                <div class="panel-title">Live Camera Feed</div>
-                <div class="video-box">
-                    <div class="placeholder">Real-time YOLO Detection</div>
-                    <img id="streamImg" src="/video_feed" alt="" onerror="this.style.display='none'" onload="this.style.display='block'">
+                <div class="panel-title">Live Camera Feeds</div>
+                <div class="video-grid">
+                    <div class="camera-card">
+                        <div class="camera-title">🚗 Car Camera</div>
+                        <div class="video-box">
+                            <div class="placeholder">Car Detection Stream</div>
+                            <img id="streamImgCar" src="/video_feed_car" alt="" onerror="this.style.display='none'" onload="this.style.display='block'">
+                        </div>
+                    </div>
+                    <div class="camera-card">
+                        <div class="camera-title">🚶 Person/Wheelchair Camera</div>
+                        <div class="video-box">
+                            <div class="placeholder">Person/Wheelchair Detection Stream</div>
+                            <img id="streamImgPerson" src="/video_feed_person" alt="" onerror="this.style.display='none'" onload="this.style.display='block'">
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -334,15 +395,20 @@ def index():
                 });
             }
 
-            // Image stream reconnection
-            const img = document.getElementById('streamImg');
-            img.onerror = function() {
-                this.style.display='none';
-                setTimeout(() => { img.src = '/video_feed?' + new Date().getTime(); }, 2000);
-            };
+            function attachReconnect(imgId, streamUrl) {
+                const img = document.getElementById(imgId);
+                if (!img) return;
+                img.onerror = function() {
+                    this.style.display = 'none';
+                    setTimeout(() => { img.src = streamUrl + '?' + new Date().getTime(); }, 2000);
+                };
+            }
 
             // ========= 新增：設定按鈕開關 Editor =========
             document.addEventListener('DOMContentLoaded', function () {
+                attachReconnect('streamImgCar', '/video_feed_car');
+                attachReconnect('streamImgPerson', '/video_feed_person');
+
                 const settingsBtn = document.getElementById('settings-btn');
                 const editorModal = document.getElementById('editor-modal');
                 const editorClose = document.getElementById('editor-close');
