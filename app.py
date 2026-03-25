@@ -196,10 +196,10 @@ def index():
                         document.getElementById('val-persons').innerText = data.persons;
                         document.getElementById('val-cars').innerText = data.cars;
                         document.getElementById('val-wheelchairs').innerText = data.wheelchairs || 0;
-                        if(data.light_state === "PED_WHEELCHAIR") uiState = "♿ Wheelchair Priority (Extended)";
                         // Proper Mapping for UI Text
                         let uiState = "⏳ Awaiting AI Detection...";
-                        if(data.light_state === "CAR_GREEN") uiState = "🟢 Green - Vehicles (N/S)";
+                        if(data.light_state === "PED_WHEELCHAIR") uiState = "♿ Wheelchair Priority (Extended)";
+                        else if(data.light_state === "CAR_GREEN") uiState = "🟢 Green - Vehicles (N/S)";
                         else if(data.light_state === "PED_LONG") uiState = "🚶 Pedestrian (Extended)";
                         else if(data.light_state === "PED_SHORT") uiState = "🚶 Pedestrian (Standard)";
                         else if(data.light_state === "MANUAL_OVERRIDE") uiState = "⚠️ Manual Override Sent";
