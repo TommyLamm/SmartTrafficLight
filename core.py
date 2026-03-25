@@ -78,8 +78,11 @@ def process_traffic_data(obfuscated_bytes):
             else: v_count += 1
 
     # ✅ 輪椅計數
+    # ✅ 修正：只計算 class 1 (wheelchair)
     for r in wheelchair_results:
-        w_count += len(r.boxes)
+        for cls_id in r.boxes.cls.cpu().numpy().astype(int):
+            if cls_id == 1:
+                w_count += 1
 
     sys_state["persons"] = p_count
     sys_state["cars"] = v_count
