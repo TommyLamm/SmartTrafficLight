@@ -3,10 +3,10 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-const char *ssid = "Tommy";
-const char *password = "55726199";
-const String serverName = "http://stl.gyke.net/detect_all"; 
-const char* XOR_KEY = "MyIoTKey2026"; 
+const char *ssid = "";
+const char *password = "";
+const String serverName = ""; 
+const char* XOR_KEY = ""; 
 
 // 不再需要定義 MEGA_TX/RX，因為直接用 TX0/RX0 (Serial)
 #define PWDN_GPIO_NUM    -1
