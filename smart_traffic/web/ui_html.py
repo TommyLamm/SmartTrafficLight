@@ -172,7 +172,7 @@ INDEX_HTML = """
             </div>
             <iframe
               id="editor-frame"
-              src="https://stledit.gyke.net/"
+              data-src="https://stledit.gyke.net/"
               style="width:100%;height:100%;border:none;"
               title="Logic Editor"
             ></iframe>
@@ -366,9 +366,14 @@ INDEX_HTML = """
                 const settingsBtn = document.getElementById('settings-btn');
                 const editorModal = document.getElementById('editor-modal');
                 const editorClose = document.getElementById('editor-close');
+                const editorFrame = document.getElementById('editor-frame');
 
-                if (settingsBtn && editorModal && editorClose) {
+                if (settingsBtn && editorModal && editorClose && editorFrame) {
                     settingsBtn.addEventListener('click', function () {
+                        // 只在第一次打開時載入 iframe，避免每次都重新載入
+                        if (!editorFrame.src && editorFrame.dataset.src) {
+                            editorFrame.src = editorFrame.dataset.src;
+                        }
                         editorModal.style.display = 'flex';
                     });
 
