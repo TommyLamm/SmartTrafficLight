@@ -1,73 +1,77 @@
-# Smart Traffic — AI 智慧交通號誌控制系統
+# Smart Traffic — AI-Powered Traffic Signal Control System
 
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Flask](https://img.shields.io/badge/Flask-3.x-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com)
 [![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-00CFFF)](https://ultralytics.com)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-本專案使用 YOLOv8 即時偵測車輛、行人與輪椅使用者，並動態決策交通號誌指令。  
-系統提供 Web 儀表板、AUTO/MANUAL 模式，以及可熱重載的 `logic.py` 演算法編輯功能。
+🌐 **Language / 語言：** English | [中文](README.zh-TW.md)
 
 ---
 
-## 目錄
-
-- [系統概述](#系統概述)
-- [硬體角色說明（Mega 與 ESP32）](#硬體角色說明mega-與-esp32)
-- [專案結構](#專案結構)
-- [安裝與啟動](#安裝與啟動)
-- [API 端點](#api-端點)
-- [基本資料流](#基本資料流)
+This project uses YOLOv8 to detect vehicles, pedestrians, and wheelchair users in real time, and dynamically determines traffic signal commands.  
+The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `logic.py` algorithm editor.
 
 ---
 
-## 系統概述
+## Table of Contents
 
-- **雙串流 AI 偵測**
-  - 車流端：`/detect_car`
-  - 行人/輪椅端：`/detect_person`
-- **號誌控制策略**
-  - 輪椅優先（可觸發 `PED_GREEN_30`）
-  - 行人流量觸發短/長過街綠燈
-  - 車流為主時切換 `CAR_GREEN`
-- **控制模式**
-  - `AUTO`：依 `logic.py` 自動決策
-  - `MANUAL`：由介面送出手動指令
-- **熱重載**
-  - 編輯 `logic.py` 後可透過 `/save_code` 即時套用，不需重啟主服務
+- [System Overview](#system-overview)
+- [Hardware Roles (Mega & ESP32)](#hardware-roles-mega--esp32)
+- [Project Structure](#project-structure)
+- [Installation & Setup](#installation--setup)
+- [API Endpoints](#api-endpoints)
+- [Basic Data Flow](#basic-data-flow)
 
 ---
 
-## 硬體角色說明（Mega 與 ESP32）
+## System Overview
 
-### 1) Arduino Mega（號誌控制器）
-
-`ArduinoMega/ArduinoMega.ino` 負責實體號誌燈狀態機與 failsafe：
-
-- 從 `Serial1` 接收來自 ESP32 的指令（格式如 `[CAR_GREEN]`、`[PED_GREEN_10]`）
-- 控制車道與行人 RGB 燈的狀態切換
-- 若超過逾時未收到有效心跳/指令，進入 failsafe 循環（預設安全時序）
-
-### 2) ESP32S3-CAM_Person（行人/輪椅節點）
-
-`ESP32S3-CAM_Person/ESP32S3-CAM_Person.ino`：
-
-- 擷取相機影像並以 XOR（`MyIoTKey2026`）混淆
-- 上傳到 `POST /detect_person`
-- 解析伺服器回應 JSON 的 `command`
-- 透過 `Serial` 將指令包成 `[COMMAND]` 發送給 Arduino Mega
-
-### 3) ESP32S3-CAM_Car（車流節點）
-
-`ESP32S3-CAM_Car/ESP32S3-CAM_Car.ino`：
-
-- 擷取相機影像並以同樣 XOR 方式混淆
-- 上傳到 `POST /detect_car`
-- 專注於車流偵測資料提供，不負責號誌指令下發
+- **Dual-Stream AI Detection**
+  - Vehicle stream: `/detect_car`
+  - Pedestrian/wheelchair stream: `/detect_person`
+- **Signal Control Strategy**
+  - Wheelchair priority (can trigger `PED_GREEN_30`)
+  - Pedestrian volume triggers short/long crossing green lights
+  - Switches to `CAR_GREEN` when vehicle traffic is dominant
+- **Control Modes**
+  - `AUTO`: Automatic decision-making via `logic.py`
+  - `MANUAL`: Manual commands issued through the dashboard
+- **Hot Reload**
+  - Edits to `logic.py` can be applied instantly via `/save_code` without restarting the main service
 
 ---
 
-## 專案結構
+## Hardware Roles (Mega & ESP32)
+
+### 1) Arduino Mega (Signal Controller)
+
+`ArduinoMega/ArduinoMega.ino` manages the physical signal light state machine and failsafe:
+
+- Receives commands from the ESP32 via `Serial1` (e.g. `[CAR_GREEN]`, `[PED_GREEN_10]`)
+- Controls state transitions for vehicle and pedestrian RGB lights
+- Enters a failsafe loop (default safe timing sequence) if no valid heartbeat/command is received within the timeout period
+
+### 2) ESP32S3-CAM_Person (Pedestrian/Wheelchair Node)
+
+`ESP32S3-CAM_Person/ESP32S3-CAM_Person.ino`:
+
+- Captures camera frames and obfuscates them via XOR (`MyIoTKey2026`)
+- Uploads frames to `POST /detect_person`
+- Parses the `command` field from the server's JSON response
+- Wraps the command as `[COMMAND]` and sends it to the Arduino Mega over `Serial`
+
+### 3) ESP32S3-CAM_Car (Vehicle Node)
+
+`ESP32S3-CAM_Car/ESP32S3-CAM_Car.ino`:
+
+- Captures camera frames and obfuscates them using the same XOR method
+- Uploads frames to `POST /detect_car`
+- Focused solely on providing vehicle detection data; does not handle signal command dispatch
+
+---
+
+## Project Structure
 
 ```text
 SmartTrafficLight/
@@ -93,73 +97,73 @@ SmartTrafficLight/
 
 ---
 
-## 安裝與啟動
+## Installation & Setup
 
-### 環境需求
+### Requirements
 
 - Python 3.10+
-- 建議安裝 CUDA（可選，用於加速推論）
+- CUDA recommended (optional, for accelerated inference)
 
-### 安裝依賴
+### Install Dependencies
 
 ```bash
 pip install flask waitress ultralytics opencv-python pillow numpy
 ```
 
-### 模型檔案
+### Model Files
 
-請將模型放在專案根目錄：
+Place the model files in the project root directory:
 
-- `yolov8n.pt`（車流偵測）
-- `person_wheelchair_personWheelchair.pt`（行人/輪椅偵測）
+- `yolov8n.pt` (vehicle detection)
+- `person_wheelchair_personWheelchair.pt` (pedestrian/wheelchair detection)
 
-### 啟動
+### Start the Server
 
 ```bash
 python app.py
 ```
 
-啟動後：
+Once running:
 
-- 主儀表板：`http://127.0.0.1:5000`
-- 演算法編輯器：`http://127.0.0.1:5001`
-
----
-
-## API 端點
-
-### 偵測相關
-
-- `POST /detect_person`：行人/輪椅影像上傳（`application/octet-stream`）
-- `POST /detect_car`：車流影像上傳
-- `POST /detect_all`：相容舊版（目前導向行人流程）
-
-### 串流與狀態
-
-- `GET /video_feed_person`：行人串流
-- `GET /video_feed_car`：車流串流
-- `GET /video_feed`：相容舊版（行人串流）
-- `GET /stats`：回傳系統狀態（含 `mode`、`command`、`stream_*_online`）
-
-### 控制相關
-
-- `POST /set_mode`：切換 `AUTO` / `MANUAL`
-- `POST /manual_override`：手動送出號誌指令
-- `POST /toggle_detection`：切換 AI 偵測開關
-- `POST /save_code`：儲存並熱重載 `logic.py`
+- Main dashboard: `http://127.0.0.1:5000`
+- Algorithm editor: `http://127.0.0.1:5001`
 
 ---
 
-## 基本資料流
+## API Endpoints
 
-1. ESP32-CAM 擷取影像並 XOR 混淆後上傳到 Flask API。  
-2. 伺服器解碼影像並執行 YOLO 推論，更新系統狀態。  
-3. 行人流程依 `logic.py` 計算 `command`。  
-4. Person 節點將 `command` 以序列格式送往 Arduino Mega。  
-5. Arduino Mega 依指令切換實體號誌燈。  
+### Detection
+
+- `POST /detect_person` — Upload pedestrian/wheelchair frames (`application/octet-stream`)
+- `POST /detect_car` — Upload vehicle frames
+- `POST /detect_all` — Legacy compatibility (currently redirects to the pedestrian pipeline)
+
+### Streams & Status
+
+- `GET /video_feed_person` — Pedestrian video stream
+- `GET /video_feed_car` — Vehicle video stream
+- `GET /video_feed` — Legacy compatibility (pedestrian stream)
+- `GET /stats` — Returns system status (includes `mode`, `command`, `stream_*_online`)
+
+### Control
+
+- `POST /set_mode` — Switch between `AUTO` and `MANUAL` modes
+- `POST /manual_override` — Send a manual signal command
+- `POST /toggle_detection` — Toggle AI detection on/off
+- `POST /save_code` — Save and hot-reload `logic.py`
 
 ---
 
-## 授權
+## Basic Data Flow
+
+1. The ESP32-CAM captures frames, obfuscates them via XOR, and uploads them to the Flask API.
+2. The server decodes the frames, runs YOLO inference, and updates the system state.
+3. The pedestrian pipeline computes a `command` according to `logic.py`.
+4. The Person node sends the `command` in serial format to the Arduino Mega.
+5. The Arduino Mega switches the physical signal lights according to the command.
+
+---
+
+## License
 
 MIT License © 2026
