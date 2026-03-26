@@ -169,7 +169,7 @@ INDEX_HTML = """
             </div>
             <iframe
               id="editor-frame"
-              src="http://stledit.gyke.net/"
+              src="https://stledit.gyke.net/"
               style="width:100%;height:100%;border:none;"
               title="Logic Editor"
             ></iframe>
