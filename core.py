@@ -1,6 +1,7 @@
 import io
 import cv2
 import threading
+import time
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
@@ -18,6 +19,10 @@ XOR_KEY = b"MyIoTKey2026"
 latest_frame = None
 latest_frame_person = None
 latest_frame_car = None
+latest_frame_ts_person = 0.0
+latest_frame_ts_car = 0.0
+
+STREAM_ONLINE_TTL_SEC = 5.0
 
 frame_condition = threading.Condition()  # Backward-compatible alias for person stream
 frame_condition_person = frame_condition
@@ -52,6 +57,17 @@ def _decode_image(obfuscated_bytes):
     decrypted_bytes = np.bitwise_xor(input_arr, key_arr).tobytes()
     return Image.open(io.BytesIO(decrypted_bytes))
 
+def _is_stream_online(last_frame_ts, ttl_sec=STREAM_ONLINE_TTL_SEC):
+    if last_frame_ts <= 0:
+        return False
+    return (time.time() - last_frame_ts) <= ttl_sec
+
+def is_person_stream_online(ttl_sec=STREAM_ONLINE_TTL_SEC):
+    return _is_stream_online(latest_frame_ts_person, ttl_sec)
+
+def is_car_stream_online(ttl_sec=STREAM_ONLINE_TTL_SEC):
+    return _is_stream_online(latest_frame_ts_car, ttl_sec)
+
 def _apply_person_control_logic(person_count, wheelchair_count):
     if sys_state["mode"] == "AUTO":
         cmd, new_state = logic.decide_light(
@@ -71,7 +87,7 @@ def _apply_person_control_logic(person_count, wheelchair_count):
             sys_state["command"] = "KEEP"
 
 def process_car_data(obfuscated_bytes):
-    global latest_frame_car
+    global latest_frame_car, latest_frame_ts_car
 
     if not sys_state["detection"]:
         return {
@@ -98,6 +114,7 @@ def process_car_data(obfuscated_bytes):
     if ret:
         with frame_condition_car:
             latest_frame_car = buffer.tobytes()
+            latest_frame_ts_car = time.time()
             frame_condition_car.notify_all()
 
     v_count = 0
@@ -116,7 +133,7 @@ def process_car_data(obfuscated_bytes):
     }
 
 def process_person_data(obfuscated_bytes):
-    global latest_frame, latest_frame_person
+    global latest_frame, latest_frame_person, latest_frame_ts_person
 
     if not sys_state["detection"]:
         return {
@@ -138,6 +155,7 @@ def process_person_data(obfuscated_bytes):
         with frame_condition_person:
             latest_frame_person = buffer.tobytes()
             latest_frame = latest_frame_person  # Backward-compatible person stream frame
+            latest_frame_ts_person = time.time()
             frame_condition_person.notify_all()
 
     p_count, w_count = 0, 0

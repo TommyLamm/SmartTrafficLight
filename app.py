@@ -64,7 +64,10 @@ def video_feed_car():
 
 @app.route('/stats')
 def stats():
-    return jsonify(core.sys_state)
+    data = dict(core.sys_state)
+    data["stream_car_online"] = core.is_car_stream_online()
+    data["stream_person_online"] = core.is_person_stream_online()
+    return jsonify(data)
 
 # ---------------- SYSTEM CONTROLS ----------------
 @app.route('/set_mode', methods=['POST'])
@@ -302,14 +305,14 @@ def index():
                         <div class="camera-title">🚗 Car Camera</div>
                         <div class="video-box">
                             <div class="placeholder">Car Detection Stream</div>
-                            <img id="streamImgCar" src="/video_feed_car" alt="" onerror="this.style.display='none'" onload="this.style.display='block'">
+                            <img id="streamImgCar" alt="" style="display:none;">
                         </div>
                     </div>
                     <div class="camera-card">
                         <div class="camera-title">🚶 Person/Wheelchair Camera</div>
                         <div class="video-box">
                             <div class="placeholder">Person/Wheelchair Detection Stream</div>
-                            <img id="streamImgPerson" src="/video_feed_person" alt="" onerror="this.style.display='none'" onload="this.style.display='block'">
+                            <img id="streamImgPerson" alt="" style="display:none;">
                         </div>
                     </div>
                 </div>
@@ -373,6 +376,8 @@ def index():
                         else if(data.light_state === "MANUAL_OVERRIDE") uiState = "⚠️ Manual Override Sent";
                         
                         document.getElementById('val-state').innerText = uiState;
+                        connectStreamIfNeeded('streamImgCar', '/video_feed_car', data.stream_car_online);
+                        connectStreamIfNeeded('streamImgPerson', '/video_feed_person', data.stream_person_online);
 
                         // Sync detection button
                         const btn = document.getElementById('btn-detect');
@@ -427,19 +432,42 @@ def index():
                 });
             }
 
-            function attachReconnect(imgId, streamUrl) {
+            function connectStreamIfNeeded(imgId, streamUrl, isOnline) {
                 const img = document.getElementById(imgId);
                 if (!img) return;
-                img.onerror = function() {
-                    this.style.display = 'none';
-                    setTimeout(() => { img.src = streamUrl + '?' + new Date().getTime(); }, 2000);
-                };
+                img.dataset.wantOnline = isOnline ? '1' : '0';
+
+                if (isOnline) {
+                    if (!img.dataset.connected || img.dataset.connected !== '1') {
+                        img.dataset.connected = '1';
+                        img.onload = function() {
+                            this.style.display = 'block';
+                        };
+                        img.onerror = function() {
+                            this.style.display = 'none';
+                            this.dataset.connected = '0';
+                            setTimeout(() => {
+                                if (this.dataset.connected === '0' && this.dataset.wantOnline === '1') {
+                                    this.src = streamUrl + '?' + new Date().getTime();
+                                    this.dataset.connected = '1';
+                                }
+                            }, 2000);
+                        };
+                        img.src = streamUrl + '?' + new Date().getTime();
+                    }
+                } else {
+                    if (img.dataset.connected === '1') {
+                        img.removeAttribute('src');
+                    }
+                    img.style.display = 'none';
+                    img.dataset.connected = '0';
+                }
             }
 
             // ========= 新增：設定按鈕開關 Editor =========
             document.addEventListener('DOMContentLoaded', function () {
-                attachReconnect('streamImgCar', '/video_feed_car');
-                attachReconnect('streamImgPerson', '/video_feed_person');
+                connectStreamIfNeeded('streamImgCar', '/video_feed_car', false);
+                connectStreamIfNeeded('streamImgPerson', '/video_feed_person', false);
 
                 const settingsBtn = document.getElementById('settings-btn');
                 const editorModal = document.getElementById('editor-modal');
