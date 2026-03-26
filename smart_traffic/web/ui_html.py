@@ -36,14 +36,17 @@ INDEX_HTML = """
             }
             .video-box {
                 background-color: #334155; 
-                /* Fixed height removed, use aspect ratio */
                 width: 100%;
-                aspect-ratio: 4/3; 
+                /* Fixed aspect-ratio removed, adapts to image */
+                min-height: 240px;
                 border-radius: 4px; 
                 display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
             }
-            .video-box img { width: 100%; height: 100%; object-fit: cover; position: absolute; z-index: 2; }
-            .video-box .placeholder { color: #94a3b8; font-size: 1.2rem; z-index: 1; }
+            .video-box img { width: 100%; height: auto; display: block; position: relative; z-index: 2; }
+            .video-box .placeholder { 
+                position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+                color: #94a3b8; font-size: 1.2rem; z-index: 1; 
+            }
 
             .side-panels { display: flex; flex-direction: column; gap: 15px; }
             
@@ -58,8 +61,8 @@ INDEX_HTML = """
                     grid-template-columns: 1fr;
                 }
                 .video-box {
-                    /* On mobile, maybe a bit smaller or just fit width */
-                    aspect-ratio: 16/9;
+                    /* On mobile, auto height based on width */
+                    height: auto;
                 }
                 .settings-button {
                     top: 15px; right: 15px;
@@ -169,7 +172,7 @@ INDEX_HTML = """
             </div>
             <iframe
               id="editor-frame"
-              src="https://stledit.gyke.net/"
+              data-src="https://stledit.gyke.net/"
               style="width:100%;height:100%;border:none;"
               title="Logic Editor"
             ></iframe>
@@ -363,9 +366,14 @@ INDEX_HTML = """
                 const settingsBtn = document.getElementById('settings-btn');
                 const editorModal = document.getElementById('editor-modal');
                 const editorClose = document.getElementById('editor-close');
+                const editorFrame = document.getElementById('editor-frame');
 
-                if (settingsBtn && editorModal && editorClose) {
+                if (settingsBtn && editorModal && editorClose && editorFrame) {
                     settingsBtn.addEventListener('click', function () {
+                        // 只在第一次打開時載入 iframe，避免每次都重新載入
+                        if (!editorFrame.src && editorFrame.dataset.src) {
+                            editorFrame.src = editorFrame.dataset.src;
+                        }
                         editorModal.style.display = 'flex';
                     });
 

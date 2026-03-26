@@ -23,6 +23,16 @@ def normalize_label(label):
     return "".join(ch for ch in str(label).lower() if ch.isalnum())
 
 
+def classify_person_label(normalized_label):
+    if normalized_label == "person":
+        return "person"
+    if normalized_label in {"peoplewheelchair", "personwheelchair", "peopleinwheelchair", "personinwheelchair"}:
+        return "people_wheelchair"
+    if normalized_label == "wheelchair":
+        return "wheelchair"
+    return "ignore"
+
+
 def process_person_data(obfuscated_bytes):
     if not sys_state["detection"]:
         return {
@@ -52,13 +62,15 @@ def process_person_data(obfuscated_bytes):
         if r.boxes is None:
             continue
         for cls_id in r.boxes.cls.cpu().numpy().astype(int):
-            label = normalize_label(class_name(r.names, cls_id))
-            if label == "person":
+            normalized_label = normalize_label(class_name(r.names, cls_id))
+            label_type = classify_person_label(normalized_label)
+
+            if label_type == "person":
                 p_count += 1
-            elif label in {"peoplewheelchair", "personwheelchair", "peopleinwheelchair", "personinwheelchair"}:
+            elif label_type == "people_wheelchair":
                 p_count += 1
                 w_count += 1
-            # 空輪椅（wheelchair）不計入輪椅優先
+            # V2 的 wheelchair 代表空輪椅，不計入 Traffic Status，也不觸發輪椅優先
 
     sys_state["persons"] = p_count
     sys_state["wheelchairs"] = w_count
