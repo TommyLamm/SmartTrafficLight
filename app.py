@@ -338,8 +338,8 @@ def index():
                     </div>
                     <!-- Manual Override Buttons -->
                     <div id="manual-actions" class="manual-actions">
-                        <button class="btn-action" onclick="forceCommand('CAR_GREEN')">🚗 Force Car Green</button>
-                        <button class="btn-action" onclick="forceCommand('PED_GREEN_20')">🚶 Force Ped Green</button>
+                        <button class="btn-action" onclick="forceCommand('CAR_GREEN', this)">🚗 Force Car Green</button>
+                        <button class="btn-action" onclick="forceCommand('PED_GREEN_20', this)">🚶 Force Ped Green</button>
                     </div>
                 </div>
 
@@ -373,7 +373,9 @@ def index():
                         else if(data.light_state === "CAR_GREEN") uiState = "🟢 Green - Vehicles (N/S)";
                         else if(data.light_state === "PED_LONG") uiState = "🚶 Pedestrian (Extended)";
                         else if(data.light_state === "PED_SHORT") uiState = "🚶 Pedestrian (Standard)";
-                        else if(data.light_state === "MANUAL_OVERRIDE") uiState = "⚠️ Manual Override Sent";
+                        else if(data.light_state === "MANUAL_OVERRIDE") {
+                            uiState = "⚠️ Manual Override: " + (data.last_manual_label || "Unknown");
+                        }
                         
                         document.getElementById('val-state').innerText = uiState;
                         connectStreamIfNeeded('streamImgCar', '/video_feed_car', data.stream_car_online);
@@ -425,10 +427,20 @@ def index():
                 });
             }
 
-            function forceCommand(cmd) {
+            function forceCommand(cmd, btn) {
+                const originalText = btn.innerText;
+                btn.innerText = "Sending...";
+                btn.disabled = true;
+
                 fetch('/manual_override', {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({command: cmd})
+                }).then(() => {
+                    btn.innerText = "Sent!";
+                    setTimeout(() => {
+                        btn.innerText = originalText;
+                        btn.disabled = false;
+                    }, 1000);
                 });
             }
 
