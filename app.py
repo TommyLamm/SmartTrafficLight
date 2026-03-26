@@ -79,6 +79,72 @@ def save_code():
         return jsonify({"success": True})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 500
+@app.route('/editor')
+def editor_ui():
+    """內嵌 code editor，取代外部 iframe"""
+    try:
+        with open(LOGIC_PATH, 'r', encoding='utf-8') as f:
+            code = f.read()
+    except:
+        code = "# logic.py not found"
+    
+    html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Algorithm Editor</title>
+    <style>
+        body {{ background: #1e1e1e; color: #fff; font-family: monospace; padding: 20px; }}
+        #editor {{ width: 100%; height: 80vh; background: #0d1117; color: #c9d1d9; 
+                  border: none; padding: 10px; font-size: 14px; font-family: monospace; }}
+        .toolbar {{ margin-bottom: 10px; }}
+        button {{ background: #238636; color: white; border: none; padding: 8px 16px; 
+                 border-radius: 6px; cursor: pointer; margin-right: 10px; }}
+        button:hover {{ background: #2ea043; }}
+        .status {{ color: #58a6ff; font-size: 14px; }}
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <button onclick="saveCode()">💾 Save & Reload</button>
+        <span class="status" id="status">Ready</span>
+    </div>
+    <textarea id="editor">{code}</textarea>
+    
+    <script>
+        function saveCode() {{
+            const code = document.getElementById('editor').value;
+            document.getElementById('status').textContent = 'Saving...';
+            
+            fetch('/save_code', {{
+                method: 'POST',
+                body: new URLSearchParams({{'code': code}})
+            }})
+            .then(r => r.json())
+            .then(data => {{
+                if (data.success) {{
+                    document.getElementById('status').textContent = '✅ Saved & Reloaded!';
+                    document.getElementById('status').style.color = '#58a6ff';
+                }} else {{
+                    document.getElementById('status').textContent = '❌ ' + data.error;
+                    document.getElementById('status').style.color = '#f85149';
+                }}
+            }});
+        }}
+        
+        // Ctrl+S 快速儲存
+        document.addEventListener('keydown', (e) => {{
+            if (e.ctrlKey && e.key === 's') {{
+                e.preventDefault();
+                saveCode();
+            }}
+        }});
+    </script>
+</body>
+</html>
+    """
+    return html
+
 
 # ---------------- WEB UI ----------------
 @app.route('/')
