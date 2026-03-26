@@ -13,25 +13,61 @@ LOGIC_PATH = os.path.join(BASE_DIR, 'logic.py')
 def detect_all():
     try:
         if not request.data: return jsonify({"error": "No Data"}), 400
-        return jsonify(core.process_traffic_data(request.data)), 200
+        return jsonify(core.process_legacy_detect_all(request.data)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def generate_frames():
+@app.route('/detect_person', methods=['POST'])
+def detect_person():
+    try:
+        if not request.data: return jsonify({"error": "No Data"}), 400
+        return jsonify(core.process_person_data(request.data)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/detect_car', methods=['POST'])
+def detect_car():
+    try:
+        if not request.data: return jsonify({"error": "No Data"}), 400
+        return jsonify(core.process_car_data(request.data)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def generate_frames(get_frame, condition):
     while True:
-        with core.frame_condition:
-            core.frame_condition.wait()
-            frame = core.latest_frame
+        with condition:
+            condition.wait()
+            frame = get_frame()
         if frame is not None:
             yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
 
 @app.route('/video_feed')
 def video_feed():
-    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
+    return Response(
+        generate_frames(lambda: core.latest_frame_person, core.frame_condition_person),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
+
+@app.route('/video_feed_person')
+def video_feed_person():
+    return Response(
+        generate_frames(lambda: core.latest_frame_person, core.frame_condition_person),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
+
+@app.route('/video_feed_car')
+def video_feed_car():
+    return Response(
+        generate_frames(lambda: core.latest_frame_car, core.frame_condition_car),
+        mimetype='multipart/x-mixed-replace; boundary=frame'
+    )
 
 @app.route('/stats')
 def stats():
-    return jsonify(core.sys_state)
+    data = dict(core.sys_state)
+    data["stream_car_online"] = core.is_car_stream_online()
+    data["stream_person_online"] = core.is_person_stream_online()
+    return jsonify(data)
 
 # ---------------- SYSTEM CONTROLS ----------------
 @app.route('/set_mode', methods=['POST'])
@@ -103,14 +139,55 @@ def index():
 
             .panel-title { color: #38bdf8; font-size: 1.1rem; font-weight: bold; margin-bottom: 15px; }
             .video-section { padding-top: 5px; }
+            .video-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 12px;
+            }
+            .camera-card {
+                background-color: #27344a;
+                border-radius: 6px;
+                padding: 10px;
+            }
+            .camera-title {
+                color: #cbd5e1;
+                font-size: 0.95rem;
+                margin-bottom: 8px;
+                font-weight: 600;
+            }
             .video-box {
-                background-color: #334155; height: 500px; border-radius: 4px; 
+                background-color: #334155; 
+                /* Fixed height removed, use aspect ratio */
+                width: 100%;
+                aspect-ratio: 4/3; 
+                border-radius: 4px; 
                 display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
             }
             .video-box img { width: 100%; height: 100%; object-fit: cover; position: absolute; z-index: 2; }
             .video-box .placeholder { color: #94a3b8; font-size: 1.2rem; z-index: 1; }
 
             .side-panels { display: flex; flex-direction: column; gap: 15px; }
+            
+            /* RWD for Mobile */
+            @media (max-width: 768px) {
+                body { padding: 10px; }
+                .main-container { 
+                    grid-template-columns: 1fr; 
+                    padding: 10px;
+                }
+                .video-grid {
+                    grid-template-columns: 1fr;
+                }
+                .video-box {
+                    /* On mobile, maybe a bit smaller or just fit width */
+                    aspect-ratio: 16/9;
+                }
+                .settings-button {
+                    top: 15px; right: 15px;
+                    padding: 8px 12px;
+                }
+            }
+
             .panel { background-color: #27344a; padding: 20px; border-radius: 6px; }
             .panel h3 { color: #5bc2fb; margin-top: 0; margin-bottom: 10px; font-size: 1rem; }
             .panel p { margin: 0; color: #cbd5e1; font-size: 0.95rem; }
@@ -172,6 +249,13 @@ def index():
                 flex-direction: column;
             }
 
+            @media (max-width: 768px) {
+                .editor-modal-content {
+                    width: 95vw;
+                    height: 90vh;
+                }
+            }
+
             .editor-modal-header {
                 height: 40px;
                 display: flex;
@@ -215,10 +299,22 @@ def index():
 
         <div class="main-container">
             <div class="video-section">
-                <div class="panel-title">Live Camera Feed</div>
-                <div class="video-box">
-                    <div class="placeholder">Real-time YOLO Detection</div>
-                    <img id="streamImg" src="/video_feed" alt="" onerror="this.style.display='none'" onload="this.style.display='block'">
+                <div class="panel-title">Live Camera Feeds</div>
+                <div class="video-grid">
+                    <div class="camera-card">
+                        <div class="camera-title">🚗 Car Camera</div>
+                        <div class="video-box">
+                            <div class="placeholder">Car Detection Stream</div>
+                            <img id="streamImgCar" alt="" style="display:none;">
+                        </div>
+                    </div>
+                    <div class="camera-card">
+                        <div class="camera-title">🚶 Person/Wheelchair Camera</div>
+                        <div class="video-box">
+                            <div class="placeholder">Person/Wheelchair Detection Stream</div>
+                            <img id="streamImgPerson" alt="" style="display:none;">
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -242,8 +338,8 @@ def index():
                     </div>
                     <!-- Manual Override Buttons -->
                     <div id="manual-actions" class="manual-actions">
-                        <button class="btn-action" onclick="forceCommand('CAR_GREEN')">🚗 Force Car Green</button>
-                        <button class="btn-action" onclick="forceCommand('PED_GREEN_20')">🚶 Force Ped Green</button>
+                        <button class="btn-action" onclick="forceCommand('CAR_GREEN', this)">🚗 Force Car Green</button>
+                        <button class="btn-action" onclick="forceCommand('PED_GREEN_20', this)">🚶 Force Ped Green</button>
                     </div>
                 </div>
 
@@ -277,9 +373,13 @@ def index():
                         else if(data.light_state === "CAR_GREEN") uiState = "🟢 Green - Vehicles (N/S)";
                         else if(data.light_state === "PED_LONG") uiState = "🚶 Pedestrian (Extended)";
                         else if(data.light_state === "PED_SHORT") uiState = "🚶 Pedestrian (Standard)";
-                        else if(data.light_state === "MANUAL_OVERRIDE") uiState = "⚠️ Manual Override Sent";
+                        else if(data.light_state === "MANUAL_OVERRIDE") {
+                            uiState = "⚠️ Manual Override: " + (data.last_manual_label || "Unknown");
+                        }
                         
                         document.getElementById('val-state').innerText = uiState;
+                        connectStreamIfNeeded('streamImgCar', '/video_feed_car', data.stream_car_online);
+                        connectStreamIfNeeded('streamImgPerson', '/video_feed_person', data.stream_person_online);
 
                         // Sync detection button
                         const btn = document.getElementById('btn-detect');
@@ -327,22 +427,60 @@ def index():
                 });
             }
 
-            function forceCommand(cmd) {
+            function forceCommand(cmd, btn) {
+                const originalText = btn.innerText;
+                btn.innerText = "Sending...";
+                btn.disabled = true;
+
                 fetch('/manual_override', {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({command: cmd})
+                }).then(() => {
+                    btn.innerText = "Sent!";
+                    setTimeout(() => {
+                        btn.innerText = originalText;
+                        btn.disabled = false;
+                    }, 1000);
                 });
             }
 
-            // Image stream reconnection
-            const img = document.getElementById('streamImg');
-            img.onerror = function() {
-                this.style.display='none';
-                setTimeout(() => { img.src = '/video_feed?' + new Date().getTime(); }, 2000);
-            };
+            function connectStreamIfNeeded(imgId, streamUrl, isOnline) {
+                const img = document.getElementById(imgId);
+                if (!img) return;
+                img.dataset.wantOnline = isOnline ? '1' : '0';
+
+                if (isOnline) {
+                    if (!img.dataset.connected || img.dataset.connected !== '1') {
+                        img.dataset.connected = '1';
+                        img.onload = function() {
+                            this.style.display = 'block';
+                        };
+                        img.onerror = function() {
+                            this.style.display = 'none';
+                            this.dataset.connected = '0';
+                            setTimeout(() => {
+                                if (this.dataset.connected === '0' && this.dataset.wantOnline === '1') {
+                                    this.src = streamUrl + '?' + new Date().getTime();
+                                    this.dataset.connected = '1';
+                                }
+                            }, 2000);
+                        };
+                        img.src = streamUrl + '?' + new Date().getTime();
+                    }
+                } else {
+                    if (img.dataset.connected === '1') {
+                        img.removeAttribute('src');
+                    }
+                    img.style.display = 'none';
+                    img.dataset.connected = '0';
+                }
+            }
 
             // ========= 新增：設定按鈕開關 Editor =========
             document.addEventListener('DOMContentLoaded', function () {
+                connectStreamIfNeeded('streamImgCar', '/video_feed_car', false);
+                connectStreamIfNeeded('streamImgPerson', '/video_feed_person', false);
+
                 const settingsBtn = document.getElementById('settings-btn');
                 const editorModal = document.getElementById('editor-modal');
                 const editorClose = document.getElementById('editor-close');
