@@ -153,13 +153,38 @@ def index():
                 font-weight: 600;
             }
             .video-box {
-                background-color: #334155; height: 320px; border-radius: 4px; 
+                background-color: #334155; 
+                /* Fixed height removed, use aspect ratio */
+                width: 100%;
+                aspect-ratio: 4/3; 
+                border-radius: 4px; 
                 display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
             }
             .video-box img { width: 100%; height: 100%; object-fit: cover; position: absolute; z-index: 2; }
             .video-box .placeholder { color: #94a3b8; font-size: 1.2rem; z-index: 1; }
 
             .side-panels { display: flex; flex-direction: column; gap: 15px; }
+            
+            /* RWD for Mobile */
+            @media (max-width: 768px) {
+                body { padding: 10px; }
+                .main-container { 
+                    grid-template-columns: 1fr; 
+                    padding: 10px;
+                }
+                .video-grid {
+                    grid-template-columns: 1fr;
+                }
+                .video-box {
+                    /* On mobile, maybe a bit smaller or just fit width */
+                    aspect-ratio: 16/9;
+                }
+                .settings-button {
+                    top: 15px; right: 15px;
+                    padding: 8px 12px;
+                }
+            }
+
             .panel { background-color: #27344a; padding: 20px; border-radius: 6px; }
             .panel h3 { color: #5bc2fb; margin-top: 0; margin-bottom: 10px; font-size: 1rem; }
             .panel p { margin: 0; color: #cbd5e1; font-size: 0.95rem; }
@@ -219,6 +244,13 @@ def index():
                 box-shadow: 0 0 10px #000;
                 display: flex;
                 flex-direction: column;
+            }
+
+            @media (max-width: 768px) {
+                .editor-modal-content {
+                    width: 95vw;
+                    height: 90vh;
+                }
             }
 
             .editor-modal-header {
