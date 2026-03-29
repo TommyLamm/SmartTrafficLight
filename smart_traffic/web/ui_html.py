@@ -455,6 +455,34 @@ INDEX_HTML = """
                 laneBoundarySyncTimer = setInterval(pollLaneBoundariesForSync, 1000);
             }
 
+            function renderSystemMode(mode) {
+                const btnAuto = document.getElementById('btn-auto');
+                const btnManual = document.getElementById('btn-manual');
+                const manualActions = document.getElementById('manual-actions');
+                if (!btnAuto || !btnManual || !manualActions) return;
+                if (mode === 'MANUAL') {
+                    btnAuto.className = 'btn-mode inactive';
+                    btnManual.className = 'btn-mode active-manual';
+                    manualActions.style.display = 'flex';
+                    return;
+                }
+                btnAuto.className = 'btn-mode active-auto';
+                btnManual.className = 'btn-mode inactive';
+                manualActions.style.display = 'none';
+            }
+
+            function renderDetectionButton(isOn) {
+                const btn = document.getElementById('btn-detect');
+                if (!btn) return;
+                if (isOn) {
+                    btn.textContent = '⏹ Stop Detection';
+                    btn.className = 'btn-detect-on';
+                    return;
+                }
+                btn.textContent = '▶ Start Detection';
+                btn.className = 'btn-detect-off';
+            }
+
             // Live Update
             setInterval(() => {
                 fetch(`/stats?t=${Date.now()}`, { cache: 'no-store' })
@@ -476,6 +504,7 @@ INDEX_HTML = """
                         document.getElementById('val-state').innerText = uiState;
                         connectStreamIfNeeded('streamImgCar', '/video_feed_car', data.stream_car_online);
                         connectStreamIfNeeded('streamImgPerson', '/video_feed_person', data.stream_person_online);
+                        renderSystemMode(data.mode);
                         if (data.lane_boundaries && typeof data.lane_boundaries.revision === 'number') {
                             const isDragging = nowMs() < laneBoundaryDraggingUntil;
                             if (!isDragging && isBoundaryStateNewer(data.lane_boundaries, laneBoundaries)) {
@@ -485,15 +514,7 @@ INDEX_HTML = """
                             }
                         }
 
-                        // Sync detection button
-                        const btn = document.getElementById('btn-detect');
-                        if(data.detection) {
-                            btn.textContent = '⏹ Stop Detection';
-                            btn.className = 'btn-detect-on';
-                        } else {
-                            btn.textContent = '▶ Start Detection';
-                            btn.className = 'btn-detect-off';
-                        }
+                        renderDetectionButton(data.detection);
                     })
                     .catch(err => console.error(err));
             }, 1000);
@@ -501,16 +522,7 @@ INDEX_HTML = """
             function toggleDetection() {
                 fetch('/toggle_detection', { method: 'POST' })
                     .then(r => r.json())
-                    .then(data => {
-                        const btn = document.getElementById('btn-detect');
-                        if(data.detection) {
-                            btn.textContent = '⏹ Stop Detection';
-                            btn.className = 'btn-detect-on';
-                        } else {
-                            btn.textContent = '▶ Start Detection';
-                            btn.className = 'btn-detect-off';
-                        }
-                    });
+                    .then(data => renderDetectionButton(data.detection));
             }
 
             // Auto / Manual System Controls Logic
@@ -518,17 +530,9 @@ INDEX_HTML = """
                 fetch('/set_mode', {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({mode: mode})
-                }).then(() => {
-                    if(mode === 'AUTO') {
-                        document.getElementById('btn-auto').className = 'btn-mode active-auto';
-                        document.getElementById('btn-manual').className = 'btn-mode inactive';
-                        document.getElementById('manual-actions').style.display = 'none';
-                    } else {
-                        document.getElementById('btn-auto').className = 'btn-mode inactive';
-                        document.getElementById('btn-manual').className = 'btn-mode active-manual';
-                        document.getElementById('manual-actions').style.display = 'flex';
-                    }
-                });
+                })
+                .then(r => r.json())
+                .then(data => renderSystemMode(data.mode));
             }
 
             function forceCommand(cmd, btn) {
