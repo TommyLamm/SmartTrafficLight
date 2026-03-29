@@ -1,6 +1,7 @@
 #include "esp_camera.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <ArduinoJson.h>
 
 const char *ssid = "";
 const char *password = "";
@@ -30,7 +31,6 @@ unsigned long lastFrameTime = 0;
 const int FRAME_INTERVAL = 200; 
 
 void setup() {
-  // 初始化 TX0 (既是用來 Debug，也是用來傳指令給 Mega)
   Serial.begin(115200);
 
   camera_config_t config;
@@ -122,7 +122,20 @@ void loop() {
 
     int httpResponseCode = http.POST(fb->buf, fb->len);
 
-    if (httpResponseCode <= 0) {
+    if (httpResponseCode > 0) {
+      String response = http.getString();
+      DynamicJsonDocument doc(256);
+      DeserializationError error = deserializeJson(doc, response);
+
+      if (!error) {
+        const char* cmd = doc["command"];
+        if (cmd) {
+          Serial.print("[");
+          Serial.print(cmd);
+          Serial.println("]");
+        }
+      }
+    } else {
       wifiClient.stop(); 
     }
 
