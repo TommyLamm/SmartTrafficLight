@@ -47,6 +47,26 @@ INDEX_HTML = """
                 position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
                 color: #94a3b8; font-size: 1.2rem; z-index: 1; 
             }
+            .video-box.car-lane-overlay::before,
+            .video-box.car-lane-overlay::after {
+                content: "";
+                position: absolute;
+                top: 0;
+                bottom: 0;
+                width: 2px;
+                background: rgba(255, 255, 255, 0.78);
+                z-index: 3;
+                pointer-events: none;
+                box-shadow: 0 0 4px rgba(0, 0, 0, 0.45);
+            }
+            .video-box.car-lane-overlay::before {
+                left: 33.333%;
+                transform: translateX(-1px);
+            }
+            .video-box.car-lane-overlay::after {
+                left: 66.666%;
+                transform: translateX(-1px);
+            }
 
             .side-panels { display: flex; flex-direction: column; gap: 15px; }
             
@@ -185,7 +205,7 @@ INDEX_HTML = """
                 <div class="video-grid">
                     <div class="camera-card">
                         <div class="camera-title">🚗 Car Camera</div>
-                        <div class="video-box">
+                        <div class="video-box car-lane-overlay">
                             <div class="placeholder">Car Detection Stream</div>
                             <img id="streamImgCar" alt="" style="display:none;">
                         </div>
