@@ -124,11 +124,29 @@ void loop() {
 
     if (httpResponseCode > 0) {
       String response = http.getString();
-      DynamicJsonDocument doc(256);
+      DynamicJsonDocument doc(512);
       DeserializationError error = deserializeJson(doc, response);
 
       if (!error) {
         const char* cmd = doc["command"];
+        int carsTotal = doc["cars_total"] | -1;
+        const char* tidalDirection = doc["tidal_direction"] | "UNKNOWN";
+        int sampleWindow = doc["sample_window"] | 0;
+        JsonArray laneCounts = doc["lane_counts"].as<JsonArray>();
+
+        Serial.print("{cars_total=");
+        Serial.print(carsTotal);
+        Serial.print(", lane_counts=(");
+        for (int i = 0; i < laneCounts.size(); i++) {
+          if (i > 0) Serial.print(",");
+          Serial.print(laneCounts[i].as<int>());
+        }
+        Serial.print("), tidal_direction=");
+        Serial.print(tidalDirection);
+        Serial.print(", sample_window=");
+        Serial.print(sampleWindow);
+        Serial.println("}");
+
         if (cmd) {
           Serial.print("[");
           Serial.print(cmd);

@@ -10,3 +10,15 @@ PERSON_MODEL_PATH = os.path.join(BASE_DIR, 'person_wheelchair_personWheelchairV2
 XOR_KEY = b"MyIoTKey2026"
 STREAM_ONLINE_TTL_SEC = 5.0
 CAR_TARGET_CLASSES = [2, 3, 5, 7]
+
+CAR_LANE_REGION_COUNT = 3
+TIDAL_SAMPLE_WINDOW = 12
+TIDAL_BIAS_MARGIN = 1.0
+
+# Perspective-aware lane boundaries for 3-lane split.
+# x-ratio of the first boundary (between left/center) at top and bottom.
+LANE_BOUNDARY1_TOP_RATIO = 0.43
+LANE_BOUNDARY1_BOTTOM_RATIO = 0.33
+# x-ratio of the second boundary (between center/right) at top and bottom.
+LANE_BOUNDARY2_TOP_RATIO = 0.57
+LANE_BOUNDARY2_BOTTOM_RATIO = 0.66
