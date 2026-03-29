@@ -63,7 +63,8 @@ def process_car_data(obfuscated_bytes):
             imgsz=800,
             classes=CAR_TARGET_CLASSES,
             save=False,
-            conf=0.25
+            conf=0.25,
+            agnostic_nms=True
         )
 
     annotated_img = results[0].plot()
