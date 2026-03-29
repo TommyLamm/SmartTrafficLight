@@ -80,7 +80,7 @@ SmartTrafficLight/
 ├── logic_editor.py
 ├── core.py
 ├── yolov8n.pt
-├── person_wheelchair_personWheelchair.pt
+├── person_wheelchair_personWheelchairV2.pt
 ├── ArduinoMega/
 │   └── ArduinoMega.ino
 ├── ESP32S3-CAM_Car/
@@ -115,7 +115,7 @@ pip install flask waitress ultralytics opencv-python pillow numpy
 請將模型放在專案根目錄：
 
 - `yolov8n.pt`（車流偵測）
-- `person_wheelchair_personWheelchair.pt`（行人/輪椅偵測）
+- `person_wheelchair_personWheelchairV2.pt`（行人/輪椅偵測）
 
 ### 啟動
 
