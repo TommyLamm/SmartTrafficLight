@@ -60,12 +60,22 @@ INDEX_HTML = """
                 box-shadow: 0 0 4px rgba(0, 0, 0, 0.45);
             }
             .video-box.car-lane-overlay::before {
-                left: 33.333%;
+                left: 43%;
                 transform: translateX(-1px);
+                transform-origin: top center;
+                height: 120%;
+                top: -10%;
+                bottom: auto;
+                transform: translateX(-1px) rotate(4.8deg);
             }
             .video-box.car-lane-overlay::after {
-                left: 66.666%;
+                left: 57%;
                 transform: translateX(-1px);
+                transform-origin: top center;
+                height: 120%;
+                top: -10%;
+                bottom: auto;
+                transform: translateX(-1px) rotate(-4.2deg);
             }
 
             .side-panels { display: flex; flex-direction: column; gap: 15px; }

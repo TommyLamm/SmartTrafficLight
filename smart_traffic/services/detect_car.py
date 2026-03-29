@@ -5,7 +5,15 @@ import cv2
 
 import smart_traffic.state as state
 
-from ..config import CAR_LANE_REGION_COUNT, CAR_TARGET_CLASSES, TIDAL_BIAS_MARGIN
+from ..config import (
+    CAR_LANE_REGION_COUNT,
+    CAR_TARGET_CLASSES,
+    LANE_BOUNDARY1_BOTTOM_RATIO,
+    LANE_BOUNDARY1_TOP_RATIO,
+    LANE_BOUNDARY2_BOTTOM_RATIO,
+    LANE_BOUNDARY2_TOP_RATIO,
+    TIDAL_BIAS_MARGIN,
+)
 from ..models import car_model
 from ..services.decode import decode_image
 from ..state import (
@@ -16,16 +24,40 @@ from ..state import (
 )
 
 
-def _bucket_lane(bottom_center_x, image_width):
-    if image_width <= 0:
+def _boundary_x(top_ratio, bottom_ratio, y, image_width, image_height):
+    if image_width <= 0 or image_height <= 0:
+        return 0.0
+    y_ratio = float(y) / float(image_height)
+    if y_ratio < 0.0:
+        y_ratio = 0.0
+    elif y_ratio > 1.0:
+        y_ratio = 1.0
+    x_ratio = top_ratio + (bottom_ratio - top_ratio) * y_ratio
+    return x_ratio * image_width
+
+
+def _bucket_lane(bottom_center_x, bottom_center_y, image_width, image_height):
+    if image_width <= 0 or image_height <= 0:
         return CAR_LANE_REGION_COUNT // 2
-    lane_width = image_width / CAR_LANE_REGION_COUNT
-    lane_index = int(bottom_center_x / lane_width)
-    if lane_index < 0:
+    boundary1_x = _boundary_x(
+        LANE_BOUNDARY1_TOP_RATIO,
+        LANE_BOUNDARY1_BOTTOM_RATIO,
+        bottom_center_y,
+        image_width,
+        image_height,
+    )
+    boundary2_x = _boundary_x(
+        LANE_BOUNDARY2_TOP_RATIO,
+        LANE_BOUNDARY2_BOTTOM_RATIO,
+        bottom_center_y,
+        image_width,
+        image_height,
+    )
+    if bottom_center_x < boundary1_x:
         return 0
-    if lane_index >= CAR_LANE_REGION_COUNT:
-        return CAR_LANE_REGION_COUNT - 1
-    return lane_index
+    if bottom_center_x < boundary2_x:
+        return 1
+    return 2
 
 
 def _compute_tidal_direction():
@@ -83,9 +115,10 @@ def process_car_data(obfuscated_bytes):
             continue
         v_count += int(len(r.boxes.cls))
         boxes = r.boxes.xyxy.cpu().numpy()
-        for x1, _, x2, _ in boxes:
+        for x1, _, x2, y2 in boxes:
             bottom_center_x = (float(x1) + float(x2)) / 2.0
-            lane_index = _bucket_lane(bottom_center_x, image_width)
+            bottom_center_y = float(y2)
+            lane_index = _bucket_lane(bottom_center_x, bottom_center_y, image_width, image_height)
             lane_counts[lane_index] += 1
 
     sys_state["cars"] = v_count
