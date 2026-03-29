@@ -74,17 +74,36 @@ INDEX_HTML = """
                 color: #e2e8f0;
                 font-size: 0.85rem;
                 font-weight: 600;
-                margin-bottom: 12px;
                 display: flex;
                 align-items: center;
                 text-transform: uppercase;
                 letter-spacing: 0.5px;
+                cursor: pointer;
+                user-select: none;
+                list-style: none; /* Hide default triangle */
+                outline: none;
+            }
+            .lane-tuning-header::-webkit-details-marker {
+                display: none;
+            }
+            details[open] > .lane-tuning-header {
+                margin-bottom: 15px;
             }
             .lane-tuning-header::before {
                 content: "⛕";
-                margin-right: 6px;
-                font-size: 1rem;
+                margin-right: 8px;
+                font-size: 1.1rem;
                 color: #38bdf8;
+            }
+            .lane-tuning-header::after {
+                content: "▼";
+                margin-left: auto;
+                font-size: 0.7rem;
+                color: #94a3b8;
+                transition: transform 0.2s ease;
+            }
+            details:not([open]) > .lane-tuning-header::after {
+                transform: rotate(-90deg);
             }
             .lane-slider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
             .lane-slider-col { display: flex; flex-direction: column; }
@@ -250,8 +269,8 @@ INDEX_HTML = """
                             </svg>
                         </div>
                         
-                        <div class="lane-tuning-container">
-                            <div class="lane-tuning-header">Lane Boundaries Tuning</div>
+                        <details class="lane-tuning-container">
+                            <summary class="lane-tuning-header">Lane Boundaries Tuning</summary>
                             <div class="lane-slider-grid">
                                 <div class="lane-slider-col">
                                     <div class="lane-slider-title" style="color: #38bdf8;">Left Line</div>
@@ -277,7 +296,7 @@ INDEX_HTML = """
                                 </div>
                             </div>
                             <div id="lane-boundary-status" class="lane-boundary-status"></div>
-                        </div>
+                        </details>
                     </div>
                     <div class="camera-card">
                         <div class="camera-title">🚶 Person/Wheelchair Camera</div>
