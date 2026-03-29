@@ -1,7 +1,8 @@
 import threading
 import time
+from collections import deque
 
-from .config import STREAM_ONLINE_TTL_SEC
+from .config import CAR_LANE_REGION_COUNT, STREAM_ONLINE_TTL_SEC, TIDAL_SAMPLE_WINDOW
 
 
 latest_frame = None
@@ -24,8 +25,12 @@ sys_state = {
     "mode": "AUTO",
     "manual_override": None,
     "last_manual_label": None,
-    "detection": True
+    "detection": True,
+    "lane_counts": [0] * CAR_LANE_REGION_COUNT,
+    "tidal_direction": "BALANCED"
 }
+
+lane_sample_window = deque(maxlen=TIDAL_SAMPLE_WINDOW)
 
 
 def is_stream_online(last_frame_ts, ttl_sec=STREAM_ONLINE_TTL_SEC):
