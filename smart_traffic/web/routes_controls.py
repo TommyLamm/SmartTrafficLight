@@ -6,12 +6,22 @@ import smart_traffic.state as state
 bp_controls = Blueprint("controls", __name__)
 
 
+def _json_no_cache(payload, status=200):
+    resp = jsonify(payload)
+    resp.status_code = status
+    resp.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+    resp.headers["Pragma"] = "no-cache"
+    resp.headers["Expires"] = "0"
+    return resp
+
+
 @bp_controls.route('/stats')
 def stats():
     data = dict(state.sys_state)
     data["stream_car_online"] = state.is_car_stream_online()
     data["stream_person_online"] = state.is_person_stream_online()
-    return jsonify(data)
+    data["lane_boundaries"] = state.get_lane_boundaries()
+    return _json_no_cache(data)
 
 
 @bp_controls.route('/set_mode', methods=['POST'])
@@ -37,7 +47,7 @@ def toggle_detection():
 
 @bp_controls.route('/lane_boundaries')
 def lane_boundaries():
-    return jsonify(state.get_lane_boundaries())
+    return _json_no_cache(state.get_lane_boundaries())
 
 
 def _parse_ratio(payload, key):
@@ -62,12 +72,18 @@ def set_lane_boundaries():
         b2_top = _parse_ratio(payload, "boundary2_top")
         b2_bottom = _parse_ratio(payload, "boundary2_bottom")
     except ValueError as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        return _json_no_cache({"success": False, "error": str(e)}, status=400)
 
     if b1_top >= b2_top:
-        return jsonify({"success": False, "error": "boundary1_top must be smaller than boundary2_top"}), 400
+        return _json_no_cache(
+            {"success": False, "error": "boundary1_top must be smaller than boundary2_top"},
+            status=400,
+        )
     if b1_bottom >= b2_bottom:
-        return jsonify({"success": False, "error": "boundary1_bottom must be smaller than boundary2_bottom"}), 400
+        return _json_no_cache(
+            {"success": False, "error": "boundary1_bottom must be smaller than boundary2_bottom"},
+            status=400,
+        )
 
     updated = {
         "boundary1_top": b1_top,
@@ -76,4 +92,4 @@ def set_lane_boundaries():
         "boundary2_bottom": b2_bottom,
     }
     state.set_lane_boundaries(updated)
-    return jsonify({"success": True, "lane_boundaries": state.get_lane_boundaries()})
+    return _json_no_cache({"success": True, "lane_boundaries": state.get_lane_boundaries()})

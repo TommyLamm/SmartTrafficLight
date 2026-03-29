@@ -292,9 +292,13 @@ INDEX_HTML = """
                 boundary1_top: 0.43,
                 boundary1_bottom: 0.33,
                 boundary2_top: 0.57,
-                boundary2_bottom: 0.66
+                boundary2_bottom: 0.66,
+                revision: 0,
+                updated_at_ms: 0
             };
             let laneBoundaryPostTimer = null;
+            let laneBoundarySyncTimer = null;
+            let laneBoundaryDraggingUntil = 0;
 
             function toFixed3(v) {
                 return Number(v).toFixed(3);
@@ -319,6 +323,20 @@ INDEX_HTML = """
                 line2.setAttribute('y1', 0);
                 line2.setAttribute('x2', boundaries.boundary2_bottom * 100);
                 line2.setAttribute('y2', 100);
+            }
+
+            function nowMs() {
+                return Date.now();
+            }
+
+            function isBoundaryStateNewer(incoming, current) {
+                const inRev = Number((incoming && incoming.revision) || 0);
+                const curRev = Number((current && current.revision) || 0);
+                if (inRev > curRev) return true;
+                if (inRev < curRev) return false;
+                const inTs = Number((incoming && incoming.updated_at_ms) || 0);
+                const curTs = Number((current && current.updated_at_ms) || 0);
+                return inTs > curTs;
             }
 
             function syncSliderUI(boundaries) {
@@ -362,8 +380,9 @@ INDEX_HTML = """
                     setLaneBoundaryStatus(validationError, true);
                     return;
                 }
-                fetch('/lane_boundaries', {
+                fetch(`/lane_boundaries?t=${Date.now()}`, {
                     method: 'POST',
+                    cache: 'no-store',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify(boundaries)
                 })
@@ -383,6 +402,7 @@ INDEX_HTML = """
             function scheduleLaneBoundaryUpdate() {
                 const boundaries = currentSliderBoundaries();
                 syncSliderUI(boundaries);
+                laneBoundaryDraggingUntil = nowMs() + 800;
                 if (laneBoundaryPostTimer) {
                     clearTimeout(laneBoundaryPostTimer);
                 }
@@ -399,12 +419,12 @@ INDEX_HTML = """
             }
 
             function loadLaneBoundaries() {
-                fetch('/lane_boundaries')
+                fetch(`/lane_boundaries?t=${Date.now()}`, { cache: 'no-store' })
                     .then(r => r.json())
                     .then(data => {
                         laneBoundaries = data;
                         syncSliderUI(laneBoundaries);
-                        setLaneBoundaryStatus('Boundary 已載入');
+                        setLaneBoundaryStatus(`Boundary 已載入（rev ${data.revision || 0}）`);
                     })
                     .catch(() => {
                         syncSliderUI(laneBoundaries);
@@ -412,9 +432,32 @@ INDEX_HTML = """
                     });
             }
 
+            function pollLaneBoundariesForSync() {
+                fetch(`/lane_boundaries?t=${Date.now()}`, { cache: 'no-store' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data || typeof data.revision !== 'number') return;
+                        const isNewer = isBoundaryStateNewer(data, laneBoundaries);
+                        const isDragging = nowMs() < laneBoundaryDraggingUntil;
+                        if (isNewer && !isDragging) {
+                            laneBoundaries = data;
+                            syncSliderUI(laneBoundaries);
+                            setLaneBoundaryStatus(`Boundary 已同步（rev ${data.revision}）`);
+                        }
+                    })
+                    .catch(() => {});
+            }
+
+            function startLaneBoundarySyncPolling() {
+                if (laneBoundarySyncTimer) {
+                    clearInterval(laneBoundarySyncTimer);
+                }
+                laneBoundarySyncTimer = setInterval(pollLaneBoundariesForSync, 1000);
+            }
+
             // Live Update
             setInterval(() => {
-                fetch('/stats')
+                fetch(`/stats?t=${Date.now()}`, { cache: 'no-store' })
                     .then(r => r.json())
                     .then(data => {
                         document.getElementById('val-persons').innerText = data.persons;
@@ -433,6 +476,14 @@ INDEX_HTML = """
                         document.getElementById('val-state').innerText = uiState;
                         connectStreamIfNeeded('streamImgCar', '/video_feed_car', data.stream_car_online);
                         connectStreamIfNeeded('streamImgPerson', '/video_feed_person', data.stream_person_online);
+                        if (data.lane_boundaries && typeof data.lane_boundaries.revision === 'number') {
+                            const isDragging = nowMs() < laneBoundaryDraggingUntil;
+                            if (!isDragging && isBoundaryStateNewer(data.lane_boundaries, laneBoundaries)) {
+                                laneBoundaries = data.lane_boundaries;
+                                syncSliderUI(laneBoundaries);
+                                setLaneBoundaryStatus(`Boundary 已同步（rev ${laneBoundaries.revision}）`);
+                            }
+                        }
 
                         // Sync detection button
                         const btn = document.getElementById('btn-detect');
@@ -535,6 +586,7 @@ INDEX_HTML = """
                 connectStreamIfNeeded('streamImgPerson', '/video_feed_person', false);
                 bindLaneBoundarySliders();
                 loadLaneBoundaries();
+                startLaneBoundarySyncPolling();
 
                 const settingsBtn = document.getElementById('settings-btn');
                 const editorModal = document.getElementById('editor-modal');
