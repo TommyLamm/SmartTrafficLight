@@ -2,7 +2,15 @@ import threading
 import time
 from collections import deque
 
-from .config import CAR_LANE_REGION_COUNT, STREAM_ONLINE_TTL_SEC, TIDAL_SAMPLE_WINDOW
+from .config import (
+    CAR_LANE_REGION_COUNT,
+    LANE_BOUNDARY1_BOTTOM_RATIO,
+    LANE_BOUNDARY1_TOP_RATIO,
+    LANE_BOUNDARY2_BOTTOM_RATIO,
+    LANE_BOUNDARY2_TOP_RATIO,
+    STREAM_ONLINE_TTL_SEC,
+    TIDAL_SAMPLE_WINDOW,
+)
 
 
 latest_frame = None
@@ -31,6 +39,13 @@ sys_state = {
 }
 
 lane_sample_window = deque(maxlen=TIDAL_SAMPLE_WINDOW)
+lane_boundary_lock = threading.Lock()
+lane_boundaries = {
+    "boundary1_top": float(LANE_BOUNDARY1_TOP_RATIO),
+    "boundary1_bottom": float(LANE_BOUNDARY1_BOTTOM_RATIO),
+    "boundary2_top": float(LANE_BOUNDARY2_TOP_RATIO),
+    "boundary2_bottom": float(LANE_BOUNDARY2_BOTTOM_RATIO),
+}
 
 
 def is_stream_online(last_frame_ts, ttl_sec=STREAM_ONLINE_TTL_SEC):
@@ -45,3 +60,13 @@ def is_person_stream_online(ttl_sec=STREAM_ONLINE_TTL_SEC):
 
 def is_car_stream_online(ttl_sec=STREAM_ONLINE_TTL_SEC):
     return is_stream_online(latest_frame_ts_car, ttl_sec)
+
+
+def get_lane_boundaries():
+    with lane_boundary_lock:
+        return dict(lane_boundaries)
+
+
+def set_lane_boundaries(new_values):
+    with lane_boundary_lock:
+        lane_boundaries.update(new_values)

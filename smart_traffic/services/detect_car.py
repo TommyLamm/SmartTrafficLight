@@ -8,10 +8,6 @@ import smart_traffic.state as state
 from ..config import (
     CAR_LANE_REGION_COUNT,
     CAR_TARGET_CLASSES,
-    LANE_BOUNDARY1_BOTTOM_RATIO,
-    LANE_BOUNDARY1_TOP_RATIO,
-    LANE_BOUNDARY2_BOTTOM_RATIO,
-    LANE_BOUNDARY2_TOP_RATIO,
     TIDAL_BIAS_MARGIN,
 )
 from ..models import car_model
@@ -36,19 +32,19 @@ def _boundary_x(top_ratio, bottom_ratio, y, image_width, image_height):
     return x_ratio * image_width
 
 
-def _bucket_lane(bottom_center_x, bottom_center_y, image_width, image_height):
+def _bucket_lane(bottom_center_x, bottom_center_y, image_width, image_height, boundaries):
     if image_width <= 0 or image_height <= 0:
         return CAR_LANE_REGION_COUNT // 2
     boundary1_x = _boundary_x(
-        LANE_BOUNDARY1_TOP_RATIO,
-        LANE_BOUNDARY1_BOTTOM_RATIO,
+        boundaries["boundary1_top"],
+        boundaries["boundary1_bottom"],
         bottom_center_y,
         image_width,
         image_height,
     )
     boundary2_x = _boundary_x(
-        LANE_BOUNDARY2_TOP_RATIO,
-        LANE_BOUNDARY2_BOTTOM_RATIO,
+        boundaries["boundary2_top"],
+        boundaries["boundary2_bottom"],
         bottom_center_y,
         image_width,
         image_height,
@@ -88,6 +84,7 @@ def process_car_data(obfuscated_bytes):
 
     image = decode_image(obfuscated_bytes)
     image_width, image_height = image.size
+    boundaries = state.get_lane_boundaries()
 
     with infer_lock:
         results = car_model.predict(
@@ -118,7 +115,7 @@ def process_car_data(obfuscated_bytes):
         for x1, _, x2, y2 in boxes:
             bottom_center_x = (float(x1) + float(x2)) / 2.0
             bottom_center_y = float(y2)
-            lane_index = _bucket_lane(bottom_center_x, bottom_center_y, image_width, image_height)
+            lane_index = _bucket_lane(bottom_center_x, bottom_center_y, image_width, image_height, boundaries)
             lane_counts[lane_index] += 1
 
     sys_state["cars"] = v_count
@@ -136,5 +133,6 @@ def process_car_data(obfuscated_bytes):
         "lane_counts": lane_counts,
         "tidal_direction": tidal_direction,
         "sample_window": len(lane_sample_window),
+        "lane_boundaries": boundaries,
         "frame_size": {"width": image_width, "height": image_height}
     }
