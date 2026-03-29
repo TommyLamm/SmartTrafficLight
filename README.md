@@ -80,7 +80,7 @@ SmartTrafficLight/
 ├── logic_editor.py
 ├── core.py
 ├── yolov8n.pt
-├── person_wheelchair_personWheelchair.pt
+├── person_wheelchair_personWheelchairV2.pt
 ├── ArduinoMega/
 │   └── ArduinoMega.ino
 ├── ESP32S3-CAM_Car/
@@ -115,7 +115,7 @@ pip install flask waitress ultralytics opencv-python pillow numpy
 Place the model files in the project root directory:
 
 - `yolov8n.pt` (vehicle detection)
-- `person_wheelchair_personWheelchair.pt` (pedestrian/wheelchair detection)
+- `person_wheelchair_personWheelchairV2.pt` (pedestrian/wheelchair detection)
 
 ### Start the Server
 
