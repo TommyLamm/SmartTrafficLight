@@ -58,15 +58,48 @@ INDEX_HTML = """
             }
             .video-box.car-lane-overlay .lane-overlay line {
                 width: 2px;
-                stroke: rgba(255, 255, 255, 0.84);
-                stroke-width: 2;
-                box-shadow: 0 0 4px rgba(0, 0, 0, 0.45);
+                stroke-width: 2.5;
+                filter: drop-shadow(0px 0px 3px rgba(0,0,0,0.8));
             }
-            .lane-slider-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }
-            .lane-slider-item { display: grid; gap: 4px; }
-            .lane-slider-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; color: #cbd5e1; }
-            .lane-slider-item input[type="range"] { width: 100%; }
-            .lane-boundary-status { margin-top: 8px; font-size: 0.82rem; color: #94a3b8; min-height: 1.2em; }
+            #laneLine1 { stroke: #38bdf8; }
+            #laneLine2 { stroke: #f43f5e; }
+            .lane-tuning-container {
+                margin-top: 15px;
+                background-color: rgba(15, 23, 42, 0.4);
+                border-radius: 6px;
+                padding: 12px;
+                border: 1px solid #334155;
+            }
+            .lane-tuning-header {
+                color: #e2e8f0;
+                font-size: 0.85rem;
+                font-weight: 600;
+                margin-bottom: 12px;
+                display: flex;
+                align-items: center;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .lane-tuning-header::before {
+                content: "⛕";
+                margin-right: 6px;
+                font-size: 1rem;
+                color: #38bdf8;
+            }
+            .lane-slider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+            .lane-slider-col { display: flex; flex-direction: column; }
+            .lane-slider-title { font-size: 0.8rem; font-weight: bold; margin-bottom: 8px; }
+            .lane-slider-item { display: flex; flex-direction: column; gap: 5px; }
+            .lane-slider-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #94a3b8; font-weight: 500;}
+            .lane-slider-head span:last-child { color: #f8fafc; font-variant-numeric: tabular-nums; background: #334155; padding: 2px 6px; border-radius: 4px;}
+            
+            .lane-slider-item input[type="range"] { 
+                width: 100%; 
+                margin: 0;
+            }
+            .left-boundary-slider input[type="range"] { accent-color: #38bdf8; }
+            .right-boundary-slider input[type="range"] { accent-color: #f43f5e; }
+            .lane-boundary-status { margin-top: 12px; font-size: 0.75rem; color: #94a3b8; min-height: 1.2em; text-align: right;}
 
             .side-panels { display: flex; flex-direction: column; gap: 15px; }
             
@@ -78,6 +111,9 @@ INDEX_HTML = """
                     padding: 10px;
                 }
                 .video-grid {
+                    grid-template-columns: 1fr;
+                }
+                .lane-slider-grid {
                     grid-template-columns: 1fr;
                 }
                 .video-box {
@@ -213,6 +249,35 @@ INDEX_HTML = """
                                 <line id="laneLine2" x1="57" y1="0" x2="66" y2="100"></line>
                             </svg>
                         </div>
+                        
+                        <div class="lane-tuning-container">
+                            <div class="lane-tuning-header">Lane Boundaries Tuning</div>
+                            <div class="lane-slider-grid">
+                                <div class="lane-slider-col">
+                                    <div class="lane-slider-title" style="color: #38bdf8;">Left Line</div>
+                                    <div class="lane-slider-item left-boundary-slider">
+                                        <div class="lane-slider-head"><span>Top</span><span id="val-b1-top">0.430</span></div>
+                                        <input id="slider-b1-top" type="range" min="0.05" max="0.95" step="0.001">
+                                    </div>
+                                    <div class="lane-slider-item left-boundary-slider" style="margin-top: 10px;">
+                                        <div class="lane-slider-head"><span>Bottom</span><span id="val-b1-bottom">0.330</span></div>
+                                        <input id="slider-b1-bottom" type="range" min="0.05" max="0.95" step="0.001">
+                                    </div>
+                                </div>
+                                <div class="lane-slider-col">
+                                    <div class="lane-slider-title" style="color: #f43f5e;">Right Line</div>
+                                    <div class="lane-slider-item right-boundary-slider">
+                                        <div class="lane-slider-head"><span>Top</span><span id="val-b2-top">0.570</span></div>
+                                        <input id="slider-b2-top" type="range" min="0.05" max="0.95" step="0.001">
+                                    </div>
+                                    <div class="lane-slider-item right-boundary-slider" style="margin-top: 10px;">
+                                        <div class="lane-slider-head"><span>Bottom</span><span id="val-b2-bottom">0.660</span></div>
+                                        <input id="slider-b2-bottom" type="range" min="0.05" max="0.95" step="0.001">
+                                    </div>
+                                </div>
+                            </div>
+                            <div id="lane-boundary-status" class="lane-boundary-status"></div>
+                        </div>
                     </div>
                     <div class="camera-card">
                         <div class="camera-title">🚶 Person/Wheelchair Camera</div>
@@ -262,28 +327,7 @@ INDEX_HTML = """
                     </ul>
                 </div>
 
-                <div class="panel">
-                    <h3>Lane Boundaries (Live)</h3>
-                    <div class="lane-slider-grid">
-                        <div class="lane-slider-item">
-                            <div class="lane-slider-head"><span>Boundary 1 Top</span><span id="val-b1-top">0.430</span></div>
-                            <input id="slider-b1-top" type="range" min="0.05" max="0.95" step="0.001">
-                        </div>
-                        <div class="lane-slider-item">
-                            <div class="lane-slider-head"><span>Boundary 1 Bottom</span><span id="val-b1-bottom">0.330</span></div>
-                            <input id="slider-b1-bottom" type="range" min="0.05" max="0.95" step="0.001">
-                        </div>
-                        <div class="lane-slider-item">
-                            <div class="lane-slider-head"><span>Boundary 2 Top</span><span id="val-b2-top">0.570</span></div>
-                            <input id="slider-b2-top" type="range" min="0.05" max="0.95" step="0.001">
-                        </div>
-                        <div class="lane-slider-item">
-                            <div class="lane-slider-head"><span>Boundary 2 Bottom</span><span id="val-b2-bottom">0.660</span></div>
-                            <input id="slider-b2-bottom" type="range" min="0.05" max="0.95" step="0.001">
-                        </div>
-                    </div>
-                    <div id="lane-boundary-status" class="lane-boundary-status"></div>
-                </div>
+
             </div>
         </div>
 
