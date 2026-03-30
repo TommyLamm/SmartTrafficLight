@@ -1,21 +1,28 @@
-from flask import Blueprint, jsonify, request
+# smart_traffic/web/routes_detect.py
+from flask import Blueprint, Response, jsonify, request
+
+import smart_traffic.state as state
 
 from ..services.detect_car import process_car_data
-from ..services.detect_violation import process_violation_data
 from ..services.detect_person import process_legacy_detect_all, process_person_data
+from ..services.detect_plate import process_plate_data          # ← NEW
+from ..services.detect_violation import process_violation_data
 
 
 bp_detect = Blueprint("detect", __name__)
+
+
+# ── existing detection routes (unchanged) ─────────────────────────────────────
 
 @bp_detect.route('/capture_violation', methods=['POST'])
 def capture_violation():
     try:
         if not request.data:
             return jsonify({"error": "No Data"}), 400
-        result = process_violation_data(request.data)
-        return jsonify(result), 200
+        return jsonify(process_violation_data(request.data)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @bp_detect.route('/detect_all', methods=['POST'])
 def detect_all():
@@ -46,12 +53,15 @@ def detect_car():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+# ── NEW: licence-plate detection ──────────────────────────────────────────────
+
 @bp_detect.route('/detect_plate', methods=['POST'])
 def detect_plate():
     """
     POST  /detect_plate
     Body : XOR-obfuscated JPEG bytes (same encoding as /detect_car).
- 
+
     Response JSON:
     {
         "plates_this_frame": [
@@ -69,8 +79,8 @@ def detect_plate():
         return jsonify(process_plate_data(request.data)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
- 
- 
+
+
 @bp_detect.route('/plates')
 def plates():
     """
@@ -81,8 +91,8 @@ def plates():
         "plates": state.sys_state.get("plates", []),
         "count": len(state.sys_state.get("plates", [])),
     })
- 
- 
+
+
 @bp_detect.route('/stream_plate')
 def stream_plate():
     """
@@ -94,17 +104,17 @@ def stream_plate():
             with state.frame_condition_plate:
                 state.frame_condition_plate.wait(timeout=5.0)
                 frame = state.latest_frame_plate
- 
+
             if frame is None:
                 continue
- 
+
             yield (
                 b"--frame\r\n"
                 b"Content-Type: image/jpeg\r\n\r\n"
                 + frame +
                 b"\r\n"
             )
- 
+
     return Response(
         generate(),
         mimetype="multipart/x-mixed-replace; boundary=frame",
