@@ -39,7 +39,8 @@ sys_state = {
     "last_manual_label": None,
     "detection": True,
     "lane_counts": [0] * CAR_LANE_REGION_COUNT,
-    "tidal_direction": "BALANCED"
+    "tidal_direction": "BALANCED",
+    "violations": []
 }
 
 lane_sample_window = deque(maxlen=TIDAL_SAMPLE_WINDOW)
