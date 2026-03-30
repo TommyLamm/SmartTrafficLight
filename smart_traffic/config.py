@@ -6,6 +6,7 @@ LOGIC_PATH = os.path.join(BASE_DIR, 'logic.py')
 
 CAR_MODEL_PATH = os.path.join(BASE_DIR, 'yolov8n.pt')
 PERSON_MODEL_PATH = os.path.join(BASE_DIR, 'person_wheelchair_personWheelchairV2.pt')
+PLATE_MODEL_PATH = os.path.join(BASE_DIR, 'models', 'best.pt')   # ← NEW
 
 XOR_KEY = b"MyIoTKey2026"
 STREAM_ONLINE_TTL_SEC = 5.0
@@ -16,9 +17,10 @@ TIDAL_SAMPLE_WINDOW = 12
 TIDAL_BIAS_MARGIN = 1.0
 
 # Perspective-aware lane boundaries for 3-lane split.
-# x-ratio of the first boundary (between left/center) at top and bottom.
 LANE_BOUNDARY1_TOP_RATIO = 0.43
 LANE_BOUNDARY1_BOTTOM_RATIO = 0.33
-# x-ratio of the second boundary (between center/right) at top and bottom.
 LANE_BOUNDARY2_TOP_RATIO = 0.57
 LANE_BOUNDARY2_BOTTOM_RATIO = 0.66
+
+# Licence-plate OCR — max unique plates kept in sys_state["plates"]
+PLATE_HISTORY_MAXLEN = 50
