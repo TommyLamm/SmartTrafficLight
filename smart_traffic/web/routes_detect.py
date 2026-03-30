@@ -1,11 +1,21 @@
 from flask import Blueprint, jsonify, request
 
 from ..services.detect_car import process_car_data
+from ..services.detect_violation import process_violation_data
 from ..services.detect_person import process_legacy_detect_all, process_person_data
 
 
 bp_detect = Blueprint("detect", __name__)
 
+@bp_detect.route('/capture_violation', methods=['POST'])
+def capture_violation():
+    try:
+        if not request.data:
+            return jsonify({"error": "No Data"}), 400
+        result = process_violation_data(request.data)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @bp_detect.route('/detect_all', methods=['POST'])
 def detect_all():
