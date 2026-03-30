@@ -45,3 +45,67 @@ def detect_car():
         return jsonify(process_car_data(request.data)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@bp_detect.route('/detect_plate', methods=['POST'])
+def detect_plate():
+    """
+    POST  /detect_plate
+    Body : XOR-obfuscated JPEG bytes (same encoding as /detect_car).
+ 
+    Response JSON:
+    {
+        "plates_this_frame": [
+            {"text": "ABC-1234", "confidence": 0.94, "bbox": [x1,y1,x2,y2],
+             "timestamp_ms": 1712345678000},
+            ...
+        ],
+        "total_plates": 12,   // cumulative plates in rolling history
+        "command": "KEEP"
+    }
+    """
+    try:
+        if not request.data:
+            return jsonify({"error": "No Data"}), 400
+        return jsonify(process_plate_data(request.data)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+ 
+ 
+@bp_detect.route('/plates')
+def plates():
+    """
+    GET  /plates
+    Returns the rolling history of all detected plates stored in sys_state.
+    """
+    return jsonify({
+        "plates": state.sys_state.get("plates", []),
+        "count": len(state.sys_state.get("plates", [])),
+    })
+ 
+ 
+@bp_detect.route('/stream_plate')
+def stream_plate():
+    """
+    GET  /stream_plate
+    MJPEG stream of the plate-annotated frames (mirrors /stream_car pattern).
+    """
+    def generate():
+        while True:
+            with state.frame_condition_plate:
+                state.frame_condition_plate.wait(timeout=5.0)
+                frame = state.latest_frame_plate
+ 
+            if frame is None:
+                continue
+ 
+            yield (
+                b"--frame\r\n"
+                b"Content-Type: image/jpeg\r\n\r\n"
+                + frame +
+                b"\r\n"
+            )
+ 
+    return Response(
+        generate(),
+        mimetype="multipart/x-mixed-replace; boundary=frame",
+    )
