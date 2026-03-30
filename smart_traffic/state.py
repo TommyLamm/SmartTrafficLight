@@ -1,3 +1,4 @@
+# smart_traffic/state.py  (diff: added plate stream fields + "plates" in sys_state)
 import hashlib
 import json
 import os
@@ -17,17 +18,23 @@ from .config import (
 )
 
 
+# ── live JPEG frame buffers ───────────────────────────────────────────────────
 latest_frame = None
 latest_frame_person = None
 latest_frame_car = None
+latest_frame_plate = None                         # ← NEW: plate-annotated frames
+
 latest_frame_ts_person = 0.0
 latest_frame_ts_car = 0.0
+latest_frame_ts_plate = 0.0                       # ← NEW
 
-frame_condition = threading.Condition()  # Backward-compatible alias for person stream
+frame_condition = threading.Condition()           # backward-compatible alias (person)
 frame_condition_person = frame_condition
 frame_condition_car = threading.Condition()
+frame_condition_plate = threading.Condition()     # ← NEW
 infer_lock = threading.Lock()
 
+# ── shared application state ──────────────────────────────────────────────────
 sys_state = {
     "persons": 0,
     "cars": 0,
@@ -41,9 +48,10 @@ sys_state = {
     "lane_counts": [0] * CAR_LANE_REGION_COUNT,
     "tidal_direction": "BALANCED",
     "violations": [],
-    "plates": []
+    "plates": [],                                  # ← NEW: rolling OCR history
 }
 
+# ── lane-boundary state (unchanged from original) ────────────────────────────
 lane_sample_window = deque(maxlen=TIDAL_SAMPLE_WINDOW)
 lane_boundary_lock = threading.Lock()
 lane_boundaries = {
@@ -63,6 +71,7 @@ lane_boundaries_state_path = os.path.join(
 lane_boundaries_state_mtime_ns = 0
 
 
+# ── stream-online helpers ─────────────────────────────────────────────────────
 def is_stream_online(last_frame_ts, ttl_sec=STREAM_ONLINE_TTL_SEC):
     if last_frame_ts <= 0:
         return False
@@ -77,6 +86,11 @@ def is_car_stream_online(ttl_sec=STREAM_ONLINE_TTL_SEC):
     return is_stream_online(latest_frame_ts_car, ttl_sec)
 
 
+def is_plate_stream_online(ttl_sec=STREAM_ONLINE_TTL_SEC):     # ← NEW
+    return is_stream_online(latest_frame_ts_plate, ttl_sec)
+
+
+# ── lane-boundary helpers (identical to original) ────────────────────────────
 def _validate_boundary_payload(payload):
     keys = ("boundary1_top", "boundary1_bottom", "boundary2_top", "boundary2_bottom")
     parsed = {}
@@ -110,11 +124,7 @@ def _validate_boundary_payload(payload):
     if updated_at_ms < 0:
         raise ValueError("lane boundary updated_at_ms must be >= 0")
 
-    return {
-        **parsed,
-        "revision": revision,
-        "updated_at_ms": updated_at_ms,
-    }
+    return {**parsed, "revision": revision, "updated_at_ms": updated_at_ms}
 
 
 def _read_lane_boundaries_from_disk():
@@ -147,25 +157,19 @@ def _write_lane_boundaries_to_disk_locked():
 
 
 def _refresh_lane_boundaries_from_disk_locked():
-    global lane_boundaries_revision
-    global lane_boundaries_updated_at_ms
-    global lane_boundaries_state_mtime_ns
-
+    global lane_boundaries_revision, lane_boundaries_updated_at_ms, lane_boundaries_state_mtime_ns
     try:
         disk_stat = os.stat(lane_boundaries_state_path)
     except FileNotFoundError:
         return
-
     if disk_stat.st_mtime_ns <= lane_boundaries_state_mtime_ns:
         return
-
     try:
         disk_payload = _read_lane_boundaries_from_disk()
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         lane_boundaries_state_mtime_ns = disk_stat.st_mtime_ns
         print(f"[lane_boundaries] invalid persisted state ignored: {exc}")
         return
-
     lane_boundaries_state_mtime_ns = disk_stat.st_mtime_ns
     is_newer = (
         disk_payload["revision"] > lane_boundaries_revision
@@ -176,11 +180,9 @@ def _refresh_lane_boundaries_from_disk_locked():
     )
     if not is_newer:
         return
-
-    lane_boundaries["boundary1_top"] = disk_payload["boundary1_top"]
-    lane_boundaries["boundary1_bottom"] = disk_payload["boundary1_bottom"]
-    lane_boundaries["boundary2_top"] = disk_payload["boundary2_top"]
-    lane_boundaries["boundary2_bottom"] = disk_payload["boundary2_bottom"]
+    lane_boundaries.update({k: disk_payload[k] for k in
+                             ("boundary1_top", "boundary1_bottom",
+                              "boundary2_top", "boundary2_bottom")})
     lane_boundaries_revision = disk_payload["revision"]
     lane_boundaries_updated_at_ms = disk_payload["updated_at_ms"]
 
@@ -196,8 +198,7 @@ def get_lane_boundaries():
 
 
 def set_lane_boundaries(new_values):
-    global lane_boundaries_revision
-    global lane_boundaries_updated_at_ms
+    global lane_boundaries_revision, lane_boundaries_updated_at_ms
     with lane_boundary_lock:
         _refresh_lane_boundaries_from_disk_locked()
         lane_boundaries.update(new_values)
