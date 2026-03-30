@@ -22,7 +22,6 @@ def _json_no_cache(payload, status=200):
 
 @bp_controls.route('/stats')
 def stats():
-    def stats():
     data = dict(state.sys_state)
     data["stream_car_online"] = state.is_car_stream_online()
     data["stream_person_online"] = state.is_person_stream_online()
