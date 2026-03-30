@@ -14,7 +14,7 @@ def encode_image(image_path: str) -> bytes:
     return np.bitwise_xor(input_arr, key_arr).tobytes()
 
 # ← Point this to your test photo
-IMAGE_PATH = "/root/andy_branch/SmartTrafficLight/test_material/images.jpg"
+IMAGE_PATH = "/root/andy_branch/SmartTrafficLight/test_material/下載.jpg"
 
 encoded = encode_image(IMAGE_PATH)
 
