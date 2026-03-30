@@ -22,10 +22,14 @@ def _json_no_cache(payload, status=200):
 
 @bp_controls.route('/stats')
 def stats():
+    def stats():
     data = dict(state.sys_state)
     data["stream_car_online"] = state.is_car_stream_online()
     data["stream_person_online"] = state.is_person_stream_online()
+    data["stream_plate_online"] = state.is_plate_stream_online()   # ← NEW
     data["lane_boundaries"] = state.get_lane_boundaries()
+    # Avoid sending the full plates history in /stats (use /plates instead)
+    data["plates_count"] = len(data.pop("plates", []))             # ← NEW
     return _json_no_cache(data)
 
 
