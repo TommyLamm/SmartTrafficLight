@@ -222,6 +222,47 @@ INDEX_HTML = """
             }
             .violations-empty .empty-icon { font-size: 2rem; margin-bottom: 8px; }
 
+            .violations-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.85rem;
+                margin-top: 4px;
+            }
+            .violations-table thead tr {
+                background: #1e2d45;
+                color: #38bdf8;
+                text-align: left;
+            }
+            .violations-table th, .violations-table td {
+                padding: 10px 12px;
+                border-bottom: 1px solid #1e293b;
+            }
+        .violations-table tbody tr:hover { background: #1e2d45; }
+        .violations-table .plate-cell {
+            font-family: monospace;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #fbbf24;
+            letter-spacing: 0.05em;
+        }
+        .violations-table .plate-na { color: #475569; font-weight: normal; }
+        .violations-thumb-btn {
+            background: none;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 2px;
+            transition: border-color 0.15s;
+        }
+        .violations-thumb-btn:hover { border-color: #f43f5e; }
+        .violations-thumb-btn img {
+            width: 80px;
+            height: 45px;
+            object-fit: cover;
+            display: block;
+            border-radius: 2px;
+        }
+
             /* ===== LIGHTBOX ===== */
             .lightbox-overlay {
                 display: none;
@@ -430,16 +471,24 @@ INDEX_HTML = """
                             🚨 Captured Violations
                             <span class="violations-badge" id="violations-count">0</span>
                         </div>
-                        <button class="violations-clear-btn" id="violations-clear-btn" onclick="clearViolationsUI()">Clear All</button>
+                        <button class="violations-clear-btn" onclick="clearViolationsUI()">Clear All</button>
                     </div>
-                    <div class="violations-grid" id="violations-grid">
-                        <div class="violations-empty">
-                            <div class="empty-icon">📷</div>
-                            No violations captured yet.
-                        </div>
-                    </div>
+                    <table class="violations-table" id="violations-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Plate Number</th>
+                                <th>Vehicles</th>
+                                <th>Photo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="violations-tbody">
+                            <tr id="violations-empty-row">
+                                <td colspan="4" style="text-align:center; color:#475569; padding:24px;">No violations captured yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
-            </div>
 
             <div class="side-panels">
                 <div class="panel">
@@ -652,75 +701,53 @@ INDEX_HTML = """
                 document.getElementById('lightbox-img').src = '';
             }
 
-            function buildViolationCard(v, isNew) {
-                const card = document.createElement('div');
-                card.className = 'violation-card';
-                card.dataset.ts = v.timestamp;
-                card.title = `Click to enlarge — ${v.vehicles_detected} vehicle(s) detected`;
-                card.onclick = () => openLightbox(v.filename, v.timestamp, v.vehicles_detected);
+            function buildViolationRow(v, isNew) {
+                const tr = document.createElement('tr');
+                if (isNew) tr.style.animation = 'fadeIn 0.4s ease';
 
-                if (isNew) {
-                    const badge = document.createElement('div');
-                    badge.className = 'violation-new-badge';
-                    badge.textContent = 'NEW';
-                    card.appendChild(badge);
-                    // Remove NEW badge after 5 seconds
-                    setTimeout(() => badge.remove(), 5000);
-                }
+                const plateHtml = (v.plate_text && v.plate_text !== 'N/A')
+                    ? `<span class="plate-cell">${v.plate_text}</span> <small style="color:#64748b">(${(v.plate_confidence*100).toFixed(0)}%)</small>`
+                    : `<span class="plate-cell plate-na">N/A</span>`;
 
-                const img = document.createElement('img');
-                img.className = 'violation-thumb';
-                img.alt = 'Violation';
-                img.loading = 'lazy';
-                img.src = `/violation_image/${v.filename}`;
-                img.onerror = function() {
-                    this.style.display = 'none';
-                    const ph = document.createElement('div');
-                    ph.className = 'violation-thumb-placeholder';
-                    ph.textContent = '📷';
-                    this.parentNode.insertBefore(ph, this);
-                };
-                card.appendChild(img);
-
-                const info = document.createElement('div');
-                info.className = 'violation-info';
-                info.innerHTML = `
-                    <div class="violation-time">${formatViolationTime(v.timestamp)}</div>
-                    <div class="violation-vehicles">🚗 ${v.vehicles_detected} vehicle${v.vehicles_detected !== 1 ? 's' : ''} detected</div>
+                tr.innerHTML = `
+                    <td style="white-space:nowrap; color:#cbd5e1">${formatViolationTime(v.timestamp)}</td>
+                    <td>${plateHtml}</td>
+                    <td style="color:#cbd5e1; text-align:center">${v.vehicles_detected}</td>
+                    <td>
+                        <button class="violations-thumb-btn" title="View full image"
+                            onclick="openLightbox('${v.filename}', ${v.timestamp}, ${v.vehicles_detected})">
+                            <img src="/violation_image/${v.filename}" alt="violation"
+                                 onerror="this.parentNode.innerHTML='📷'">
+                        </button>
+                    </td>
                 `;
-                card.appendChild(info);
-                return card;
+                return tr;
             }
 
             function renderViolationsGrid(newRecords) {
-                const grid = document.getElementById('violations-grid');
+                const tbody = document.getElementById('violations-tbody');
                 const countBadge = document.getElementById('violations-count');
-                if (!grid) return;
+                if (!tbody) return;
 
                 newRecords.forEach(v => {
                     if (knownViolationTimestamps.has(v.timestamp)) return;
                     knownViolationTimestamps.add(v.timestamp);
-                    violationsUIList.unshift(v); // newest first
+                    violationsUIList.unshift(v);
 
-                    // Remove empty placeholder if present
-                    const emptyEl = grid.querySelector('.violations-empty');
-                    if (emptyEl) emptyEl.remove();
-
-                    const card = buildViolationCard(v, true);
-                    grid.insertBefore(card, grid.firstChild);
+                    document.getElementById('violations-empty-row')?.remove();
+                    tbody.insertBefore(buildViolationRow(v, true), tbody.firstChild);
                 });
 
                 countBadge.textContent = violationsUIList.length;
             }
 
             function clearViolationsUI() {
-                const grid = document.getElementById('violations-grid');
-                const countBadge = document.getElementById('violations-count');
-                if (!grid) return;
-                grid.innerHTML = `<div class="violations-empty"><div class="empty-icon">📷</div>No violations captured yet.</div>`;
+                const tbody = document.getElementById('violations-tbody');
+                if (!tbody) return;
+                tbody.innerHTML = `<tr id="violations-empty-row"><td colspan="4" style="text-align:center; color:#475569; padding:24px;">No violations captured yet.</td></tr>`;
                 knownViolationTimestamps.clear();
                 violationsUIList = [];
-                countBadge.textContent = '0';
+                document.getElementById('violations-count').textContent = '0';
             }
 
             function pollViolations() {
