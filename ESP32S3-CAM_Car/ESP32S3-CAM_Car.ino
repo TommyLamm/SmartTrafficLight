@@ -18,8 +18,8 @@
 #include <ArduinoJson.h>
 
 // ─────────────────────── CREDENTIALS ────────────────────────
-const char *ssid     = "Andy";
-const char *password = "Andyandy1233";
+const char *ssid     = "";
+const char *password = "";
 
 // ─────────────────────── SERVER ENDPOINTS ───────────────────
 const String serverName          = "http://stl.gyke.net/detect_car";

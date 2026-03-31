@@ -6,7 +6,7 @@ LOGIC_PATH = os.path.join(BASE_DIR, 'logic.py')
 
 CAR_MODEL_PATH = os.path.join(BASE_DIR, 'yolov8n.pt')
 PERSON_MODEL_PATH = os.path.join(BASE_DIR, 'person_wheelchair_personWheelchairV2.pt')
-PLATE_MODEL_PATH = os.path.join(BASE_DIR, 'best.pt')   # ← NEW
+PLATE_MODEL_PATH = os.path.join(BASE_DIR, 'license_plate.pt')   # ← NEW
 
 XOR_KEY = b"MyIoTKey2026"
 STREAM_ONLINE_TTL_SEC = 5.0
