@@ -1,7 +1,12 @@
-from flask import Blueprint, jsonify, request
+import os
+
+from flask import Blueprint, jsonify, request, send_from_directory
 
 import smart_traffic.state as state
 
+VIOLATIONS_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "violations"
+)
 
 bp_controls = Blueprint("controls", __name__)
 
@@ -20,7 +25,10 @@ def stats():
     data = dict(state.sys_state)
     data["stream_car_online"] = state.is_car_stream_online()
     data["stream_person_online"] = state.is_person_stream_online()
+    data["stream_plate_online"] = state.is_plate_stream_online()   # ← NEW
     data["lane_boundaries"] = state.get_lane_boundaries()
+    # Avoid sending the full plates history in /stats (use /plates instead)
+    data["plates_count"] = len(data.pop("plates", []))             # ← NEW
     return _json_no_cache(data)
 
 
@@ -93,3 +101,16 @@ def set_lane_boundaries():
     }
     state.set_lane_boundaries(updated)
     return _json_no_cache({"success": True, "lane_boundaries": state.get_lane_boundaries()})
+
+
+@bp_controls.route('/violation_image/<path:filename>')
+def violation_image(filename):
+    """Serve a captured violation image by filename."""
+    safe_name = os.path.basename(filename)
+    return send_from_directory(VIOLATIONS_DIR, safe_name)
+
+
+@bp_controls.route('/violations')
+def violations():
+    """Return the list of all violation records."""
+    return _json_no_cache({"violations": state.sys_state.get("violations", [])})
