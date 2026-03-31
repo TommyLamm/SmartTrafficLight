@@ -222,6 +222,47 @@ INDEX_HTML = """
             }
             .violations-empty .empty-icon { font-size: 2rem; margin-bottom: 8px; }
 
+            .violations-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.85rem;
+                margin-top: 4px;
+            }
+            .violations-table thead tr {
+                background: #1e2d45;
+                color: #38bdf8;
+                text-align: left;
+            }
+            .violations-table th, .violations-table td {
+                padding: 10px 12px;
+                border-bottom: 1px solid #1e293b;
+            }
+        .violations-table tbody tr:hover { background: #1e2d45; }
+        .violations-table .plate-cell {
+            font-family: monospace;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #fbbf24;
+            letter-spacing: 0.05em;
+        }
+        .violations-table .plate-na { color: #475569; font-weight: normal; }
+        .violations-thumb-btn {
+            background: none;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 2px;
+            transition: border-color 0.15s;
+        }
+        .violations-thumb-btn:hover { border-color: #f43f5e; }
+        .violations-thumb-btn img {
+            width: 80px;
+            height: 45px;
+            object-fit: cover;
+            display: block;
+            border-radius: 2px;
+        }
+
             /* ===== LIGHTBOX ===== */
             .lightbox-overlay {
                 display: none;
@@ -430,16 +471,24 @@ INDEX_HTML = """
                             🚨 Captured Violations
                             <span class="violations-badge" id="violations-count">0</span>
                         </div>
-                        <button class="violations-clear-btn" id="violations-clear-btn" onclick="clearViolationsUI()">Clear All</button>
+                        <button class="violations-clear-btn" onclick="clearViolationsUI()">Clear All</button>
                     </div>
-                    <div class="violations-grid" id="violations-grid">
-                        <div class="violations-empty">
-                            <div class="empty-icon">📷</div>
-                            No violations captured yet.
-                        </div>
-                    </div>
+                    <table class="violations-table" id="violations-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Plate Number</th>
+                                <th>Vehicles</th>
+                                <th>Photo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="violations-tbody">
+                            <tr id="violations-empty-row">
+                                <td colspan="4" style="text-align:center; color:#475569; padding:24px;">No violations captured yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
-            </div>
 
             <div class="side-panels">
                 <div class="panel">
