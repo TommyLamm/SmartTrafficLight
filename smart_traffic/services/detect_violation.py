@@ -32,6 +32,7 @@ def process_violation_data(obfuscated_bytes):
     saves the image to disk, and logs the event in sys_state.
     """
     image = decode_image(obfuscated_bytes)
+
     # Run plate model on the same frame
     plate_results = plate_model.predict(
         source=image, imgsz=640, conf=0.25, save=False
@@ -59,7 +60,7 @@ def process_violation_data(obfuscated_bytes):
                     plate_text = str(inner[1][0])
                     plate_conf = round(float(inner[1][1]), 3)
                     break  # take the first/best plate
-    
+
     # Run detection on HD frame (reuse car model until plate model is ready)
     results = car_model.predict(
         source=image,
@@ -89,8 +90,8 @@ def process_violation_data(obfuscated_bytes):
         "timestamp": timestamp,
         "filename": filename,
         "vehicles_detected": detected_count,
-        "plate_text": plate_text,        # ← ADD
-        "plate_confidence": plate_conf,  # ← ADD
+        "plate_text": plate_text,
+        "plate_confidence": plate_conf,
     }
     sys_state["violations"].append(record)
 
@@ -100,6 +101,6 @@ def process_violation_data(obfuscated_bytes):
         "filename": filename,
         "vehicles_detected": detected_count,
         "total_violations": len(sys_state["violations"]),
-        "plate_text": plate_text,        # ← ADD
-        "plate_confidence": plate_conf,  # ← ADD
+        "plate_text": plate_text,
+        "plate_confidence": plate_conf,
     }
