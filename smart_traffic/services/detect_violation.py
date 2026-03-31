@@ -33,32 +33,32 @@ def process_violation_data(obfuscated_bytes):
     """
     image = decode_image(obfuscated_bytes)
     # Run plate model on the same frame
-plate_results = plate_model.predict(
-    source=image, imgsz=640, conf=0.25, save=False
-)
+    plate_results = plate_model.predict(
+        source=image, imgsz=640, conf=0.25, save=False
+    )
 
-plate_text, plate_conf = "N/A", 0.0
-if plate_results[0].boxes is not None:
-    frame_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-    img_h, img_w = frame_bgr.shape[:2]
-    ocr = _get_ocr()
-    for box in plate_results[0].boxes:
-        x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(img_w, x2), min(img_h, y2)
-        if x2 <= x1 or y2 <= y1:
-            continue
-        crop = frame_bgr[y1:y2, x1:x2]
-        gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
-        crop_up = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
-        crop_up = cv2.cvtColor(crop_up, cv2.COLOR_GRAY2BGR)
-        result = ocr.ocr(crop_up)
-        if result and result[0]:
-            inner = result[0][0]
-            if inner and len(inner) >= 2:
-                plate_text = str(inner[1][0])
-                plate_conf = round(float(inner[1][1]), 3)
-                break  # take the first/best plate
+    plate_text, plate_conf = "N/A", 0.0
+    if plate_results[0].boxes is not None:
+        frame_bgr = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        img_h, img_w = frame_bgr.shape[:2]
+        ocr = _get_ocr()
+        for box in plate_results[0].boxes:
+            x1, y1, x2, y2 = map(int, box.xyxy[0].cpu().numpy())
+            x1, y1 = max(0, x1), max(0, y1)
+            x2, y2 = min(img_w, x2), min(img_h, y2)
+            if x2 <= x1 or y2 <= y1:
+                continue
+            crop = frame_bgr[y1:y2, x1:x2]
+            gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+            crop_up = cv2.resize(gray, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+            crop_up = cv2.cvtColor(crop_up, cv2.COLOR_GRAY2BGR)
+            result = ocr.ocr(crop_up)
+            if result and result[0]:
+                inner = result[0][0]
+                if inner and len(inner) >= 2:
+                    plate_text = str(inner[1][0])
+                    plate_conf = round(float(inner[1][1]), 3)
+                    break  # take the first/best plate
     
     # Run detection on HD frame (reuse car model until plate model is ready)
     results = car_model.predict(
