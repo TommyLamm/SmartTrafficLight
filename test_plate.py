@@ -4,7 +4,7 @@ import numpy as np
 XOR_KEY = b"MyIoTKey2026"
 
 # Load any JPEG image and XOR-obfuscate it
-with open("/root/andy_branch/SmartTrafficLight/test_material/下載.jpg", "rb") as f:
+with open("/root/beta_branch/SmartTrafficLight/test_material/下載.jpg", "rb") as f:
     raw = f.read()
 
 input_arr = np.frombuffer(raw, dtype=np.uint8)
