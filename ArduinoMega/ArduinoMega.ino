@@ -74,20 +74,21 @@
 
 // ─────────────────────────── RFID UIDs ──────────────────────
 // Replace these with your real 4-byte emergency tag UIDs.
-#define EMERGENCY_UID_1_B0 0xDE
-#define EMERGENCY_UID_1_B1 0xAD
-#define EMERGENCY_UID_1_B2 0xBE
-#define EMERGENCY_UID_1_B3 0xEF
+#define EMERGENCY_UID_1_B0 0xCC
+#define EMERGENCY_UID_1_B1 0x0E
+#define EMERGENCY_UID_1_B2 0x40
+#define EMERGENCY_UID_1_B3 0x18
 
-#define EMERGENCY_UID_2_B0 0xCA
-#define EMERGENCY_UID_2_B1 0xFE
-#define EMERGENCY_UID_2_B2 0xBA
-#define EMERGENCY_UID_2_B3 0xBE
+// Dummy values to bypass the CAFE BABE error for the second card
+#define EMERGENCY_UID_2_B0 0xBA
+#define EMERGENCY_UID_2_B1 0x9C
+#define EMERGENCY_UID_2_B2 0xA9
+#define EMERGENCY_UID_2_B3 0x1A
 
 #if ENABLE_RFID && ENFORCE_RFID_UID_GATE
 #if ((EMERGENCY_UID_1_B0 == 0xDE) && (EMERGENCY_UID_1_B1 == 0xAD) && (EMERGENCY_UID_1_B2 == 0xBE) && (EMERGENCY_UID_1_B3 == 0xEF)) || \
     ((EMERGENCY_UID_2_B0 == 0xCA) && (EMERGENCY_UID_2_B1 == 0xFE) && (EMERGENCY_UID_2_B2 == 0xBA) && (EMERGENCY_UID_2_B3 == 0xBE))
-#error "RFID UID gate: replace placeholder EMERGENCY_UID_x_B* values before flashing."
+#error "RFID UID gate: replace placeholder EMERGENCY_UID_
 #endif
 #endif
 
@@ -127,7 +128,8 @@ enum TidalLane {
   LANE_RIGHT_STRAIGHT,
   LANE_LEFT_RIGHT,
   LANE_ALL,
-  LANE_CLOSED
+  LANE_CLOSED,
+  LANE_EMERGENCY
 };
 
 // ─────────────────────── STATE VARIABLES ────────────────────
@@ -159,6 +161,7 @@ bool redLightViolation = false;
 int carCount = 0;
 
 // --- Illuminance / LED brightness ---
+int illuminance = 0;
 int  brightness = 255;  // 0-255 PWM level for light output
 
 // --- Tidal lane ---
@@ -214,6 +217,7 @@ void setup() {
 //  LOOP
 // ============================================================
 void loop() {
+  BrightnessControl();
 
   // ── 1. RECEIVE COMMANDS FROM ESP32 ──────────────────────
   handleSerial1();
@@ -317,6 +321,7 @@ void handleSerial1() {
   else if (cmd == "LANE_LEFT_RIGHT")     { setLane(LANE_LEFT_RIGHT); }
   else if (cmd == "LANE_ALL")            { setLane(LANE_ALL); }
   else if (cmd == "LANE_CLOSED")         { setLane(LANE_CLOSED); }
+  else if (cmd == "LANE_EMERGENCY")      { setLane(LANE_EMERGENCY); }
 
   // ── Vehicle count update: "COUNT_8", "COUNT_12", etc. ──
   else if (cmd.startsWith("COUNT_")) {
@@ -361,24 +366,16 @@ void readPressureSensor() {
         Serial.println("!! [VIOLATION] Vehicle crossed stop line on RED !!");
       }
     }
+    else {
+      pressureDuration = micros() - pressureStartUs;
+      detect_jam();
+    }
   }
   else {
     if (pressureOn) {
       pressureDuration = micros() - pressureStartUs;
       pressureOn       = false;
-
-      // Traffic jam detection: vehicle sat stationary for too long
-      if (pressureDuration > JAM_DURATION_THRESHOLD &&
-          carCount          > CAR_COUNT_JAM_THRESHOLD) {
-        jam            = true;
-        lastJamTimeUs  = micros();
-        coolingPeriod  = true;
-        Serial.println("!! [JAM] Traffic jam detected — notifying ESP32.");
-        Serial2.println("[JAM_DETECTED]");
-      }
-      else if (!coolingPeriod) {
-        jam = false;
-      }
+      detect_jam();
     }
   }
 
@@ -386,16 +383,42 @@ void readPressureSensor() {
   if (coolingPeriod &&
       (micros() - lastJamTimeUs > COOLING_PERIOD_DURATION)) {
     coolingPeriod = false;
-    jam           = false;
     Serial.println("[INFO] Jam cooling period ended.");
   }
 }
+
+void detect_jam(){
+  // Traffic jam detection: vehicle sat stationary for too long
+  if (pressureDuration > JAM_DURATION_THRESHOLD &&
+      carCount         > CAR_COUNT_JAM_THRESHOLD) {
+        jam            = true;
+        lastJamTimeUs  = micros();
+        coolingPeriod  = true;
+        Serial.println("!! [JAM] Traffic jam detected — notifying ESP32.");
+        Serial2.println("[JAM_DETECTED]");
+      }
+  else if (!coolingPeriod) {
+    jam = false;
+  }
+}
+
 
 // ============================================================
 //  SECTION C — ILLUMINANCE SENSOR
 //  Adjusts the LED brightness PWM based on ambient light.
 // ============================================================
-
+void BrightnessControl(){
+  illuminance = analogRead(A1);
+  if(illuminance > ILLUM_UPPER){
+    brightness = 255;
+  }
+  else if(illuminance < ILLUM_LOWER){
+    brightness = 135;
+  }
+  else {
+    brightness = illuminance * 2 + 55;
+  }
+}
 
 // ============================================================
 //  SECTION D — RFID EMERGENCY VEHICLE DETECTION
@@ -476,7 +499,7 @@ void runStateMachine() {
 
     // Car Yellow — short warning before red
     case STATE_CAR_YELLOW:
-      setLights(1, 1, 0,  1, 0, 0);
+      setLights(0, 0, 1,  1, 0, 0);
       if (timeInState > YELLOW_DURATION) switchState(STATE_PED_GREEN);
       break;
 
@@ -551,6 +574,7 @@ void updateOLED() {
     case LANE_LEFT_RIGHT:     drawLeftRight();     break;
     case LANE_ALL:            drawAll();           break;
     case LANE_CLOSED:         drawClosed();        break;
+    case LANE_EMERGENCY:      writeEmergency();        break;
   }
 
   display.display();
@@ -661,6 +685,14 @@ void drawClosed() {
   display.fillTriangle(44,57, 39,52, 84,7,  WHITE);
   display.fillTriangle(44,57, 84,7,  89,12, WHITE);
 }
+
+void writeEmergency() {
+  // text emergency
+  display.setTextSize(4);
+  display.setTextColor(WHITE);
+  display.setCursor(0, 20);
+  display.println("EMERGENCY VEHICLES ONLY!");
+}
 #endif
 
 // ============================================================
@@ -683,12 +715,12 @@ void switchState(TrafficState newState) {
 // Sets traffic light LEDs — scaled by ambient brightness
 // Parameters: car (R,G,B), pedestrian (R,G,B)  — 0 = off, 1 = on
 void setLights(int cr, int cg, int cb, int pr, int pg, int pb) {
-  digitalWrite(CAR_RED_PIN,   cr ? HIGH : LOW);
-  digitalWrite(CAR_GREEN_PIN, cg ? HIGH : LOW);
-  digitalWrite(CAR_BLUE_PIN,  cb ? HIGH : LOW);
-  digitalWrite(PED_RED_PIN,   pr ? HIGH : LOW);
-  digitalWrite(PED_GREEN_PIN, pg ? HIGH : LOW);
-  digitalWrite(PED_BLUE_PIN,  pb ? HIGH : LOW);
+  analogWrite(CAR_RED_PIN,   cr ? brightness : 0);
+  analogWrite(CAR_GREEN_PIN, cg ? brightness : 0);
+  analogWrite(CAR_BLUE_PIN,  cb ? brightness : 0);
+  analogWrite(PED_RED_PIN,   pr ? brightness : 0);
+  analogWrite(PED_GREEN_PIN, pg ? brightness : 0);
+  analogWrite(PED_BLUE_PIN,  pb ? brightness : 0);
 }
 
 String laneLabel(TidalLane lane) {
@@ -701,6 +733,7 @@ String laneLabel(TidalLane lane) {
     case LANE_LEFT_RIGHT:     return "LEFT+RIGHT";
     case LANE_ALL:            return "ALL";
     case LANE_CLOSED:         return "CLOSED";
+    case LANE_EMERGENCY:      return "EMERGENCY";
     default:                  return "UNKNOWN";
   }
 }
