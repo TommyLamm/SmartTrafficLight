@@ -1,3 +1,22 @@
+# Python cache / bytecode
 __pycache__/
-*.pyc
-yolov8n.pt
+*.py[cod]
+*$py.class
+
+# Python tooling cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE / editor
+.vscode/
+.idea/
+
+# Logs
+*.log
+

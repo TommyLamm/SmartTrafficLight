@@ -1,0 +1,169 @@
+# Smart Traffic — AI 智慧交通號誌控制系統
+
+[![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)](https://python.org)
+[![Flask](https://img.shields.io/badge/Flask-3.x-000000?logo=flask&logoColor=white)](https://flask.palletsprojects.com)
+[![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-00CFFF)](https://ultralytics.com)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
+🌐 **Language / 語言：** [English](README.md) | 繁體中文
+
+---
+
+本專案使用 YOLOv8 即時偵測車輛、行人與輪椅使用者，並動態決策交通號誌指令。  
+系統提供 Web 儀表板、AUTO/MANUAL 模式，以及可熱重載的 `logic.py` 演算法編輯功能。
+
+---
+
+## 目錄
+
+- [系統概述](#系統概述)
+- [硬體角色說明（Mega 與 ESP32）](#硬體角色說明mega-與-esp32)
+- [專案結構](#專案結構)
+- [安裝與啟動](#安裝與啟動)
+- [API 端點](#api-端點)
+- [基本資料流](#基本資料流)
+
+---
+
+## 系統概述
+
+- **雙串流 AI 偵測**
+  - 車流端：`/detect_car`
+  - 行人/輪椅端：`/detect_person`
+- **號誌控制策略**
+  - 輪椅優先（可觸發 `PED_GREEN_30`）
+  - 行人流量觸發短/長過街綠燈
+  - 車流為主時切換 `CAR_GREEN`
+- **控制模式**
+  - `AUTO`：依 `logic.py` 自動決策
+  - `MANUAL`：由介面送出手動指令
+- **熱重載**
+  - 編輯 `logic.py` 後可透過 `/save_code` 即時套用，不需重啟主服務
+
+---
+
+## 硬體角色說明（Mega 與 ESP32）
+
+### 1) Arduino Mega（號誌控制器）
+
+`ArduinoMega/ArduinoMega.ino` 負責實體號誌燈狀態機與 failsafe：
+
+- 從 `Serial1` 接收來自 ESP32 的指令（格式如 `[CAR_GREEN]`、`[PED_GREEN_10]`）
+- 控制車道與行人 RGB 燈的狀態切換
+- 若超過逾時未收到有效心跳/指令，進入 failsafe 循環（預設安全時序）
+
+### 2) ESP32S3-CAM_Person（行人/輪椅節點）
+
+`ESP32S3-CAM_Person/ESP32S3-CAM_Person.ino`：
+
+- 擷取相機影像並以 XOR（`MyIoTKey2026`）混淆
+- 上傳到 `POST /detect_person`
+- 解析伺服器回應 JSON 的 `command`
+- 透過 `Serial` 將指令包成 `[COMMAND]` 發送給 Arduino Mega
+
+### 3) ESP32S3-CAM_Car（車流節點）
+
+`ESP32S3-CAM_Car/ESP32S3-CAM_Car.ino`：
+
+- 擷取相機影像並以同樣 XOR 方式混淆
+- 上傳到 `POST /detect_car`
+- 專注於車流偵測資料提供，不負責號誌指令下發
+
+---
+
+## 專案結構
+
+```text
+SmartTrafficLight/
+├── app.py
+├── logic.py
+├── logic_editor.py
+├── core.py
+├── yolov8n.pt
+├── person_wheelchair_personWheelchairV2.pt
+├── ArduinoMega/
+│   └── ArduinoMega.ino
+├── ESP32S3-CAM_Car/
+│   └── ESP32S3-CAM_Car.ino
+├── ESP32S3-CAM_Person/
+│   └── ESP32S3-CAM_Person.ino
+└── smart_traffic/
+    ├── config.py
+    ├── models.py
+    ├── state.py
+    ├── services/
+    └── web/
+```
+
+---
+
+## 安裝與啟動
+
+### 環境需求
+
+- Python 3.10+
+- 建議安裝 CUDA（可選，用於加速推論）
+
+### 安裝依賴
+
+```bash
+pip install flask waitress ultralytics opencv-python pillow numpy
+```
+
+### 模型檔案
+
+請將模型放在專案根目錄：
+
+- `yolov8n.pt`（車流偵測）
+- `person_wheelchair_personWheelchairV2.pt`（行人/輪椅偵測）
+
+### 啟動
+
+```bash
+python app.py
+```
+
+啟動後：
+
+- 主儀表板：`http://127.0.0.1:5000`
+- 演算法編輯器：`http://127.0.0.1:5001`
+
+---
+
+## API 端點
+
+### 偵測相關
+
+- `POST /detect_person`：行人/輪椅影像上傳（`application/octet-stream`）
+- `POST /detect_car`：車流影像上傳
+- `POST /detect_all`：相容舊版（目前導向行人流程）
+
+### 串流與狀態
+
+- `GET /video_feed_person`：行人串流
+- `GET /video_feed_car`：車流串流
+- `GET /video_feed`：相容舊版（行人串流）
+- `GET /stats`：回傳系統狀態（含 `mode`、`command`、`stream_*_online`）
+
+### 控制相關
+
+- `POST /set_mode`：切換 `AUTO` / `MANUAL`
+- `POST /manual_override`：手動送出號誌指令
+- `POST /toggle_detection`：切換 AI 偵測開關
+- `POST /save_code`：儲存並熱重載 `logic.py`
+
+---
+
+## 基本資料流
+
+1. ESP32-CAM 擷取影像並 XOR 混淆後上傳到 Flask API。  
+2. 伺服器解碼影像並執行 YOLO 推論，更新系統狀態。  
+3. 行人流程依 `logic.py` 計算 `command`。  
+4. Person 節點將 `command` 以序列格式送往 Arduino Mega。  
+5. Arduino Mega 依指令切換實體號誌燈。  
+
+---
+
+## 授權
+
+MIT License © 2026

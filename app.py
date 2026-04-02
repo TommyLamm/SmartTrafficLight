@@ -1,13 +1,14 @@
 import os
-import ast  
-import importlib
-from flask import Flask, request, jsonify, Response, render_template_string
-import core  
+import subprocess
+import sys
 
-app = Flask(__name__)
+from smart_traffic import create_app
+
+
+app = create_app()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-LOGIC_PATH = os.path.join(BASE_DIR, 'logic.py')
 
+<<<<<<< HEAD
 # ---------------- API ENDPOINTS ----------------
 @app.route('/detect_all', methods=['POST'])
 def detect_all():
@@ -434,11 +435,10 @@ def index():
     </html>
     """
     return render_template_string(html)
+=======
+>>>>>>> origin/main
 
 if __name__ == '__main__':
-    import subprocess
-    import sys
-
     editor_path = os.path.join(BASE_DIR, 'logic_editor.py')
     if os.path.exists(editor_path):
         subprocess.Popen([sys.executable, editor_path])
