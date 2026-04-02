@@ -8,7 +8,7 @@ from smart_traffic import create_app
 app = create_app()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-<<<<<<< HEAD
+
 # ---------------- API ENDPOINTS ----------------
 @app.route('/detect_all', methods=['POST'])
 def detect_all():
@@ -435,8 +435,6 @@ def index():
     </html>
     """
     return render_template_string(html)
-=======
->>>>>>> origin/main
 
 if __name__ == '__main__':
     editor_path = os.path.join(BASE_DIR, 'logic_editor.py')
