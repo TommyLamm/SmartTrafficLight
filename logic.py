@@ -1,4 +1,5 @@
-def decide_light(person_count, vehicle_count, wheelchair_count, current_light_state):
+def decide_light(person_count, vehicle_count, wheelchair_count, current_light_state,
+                 emergency_active=False, wheelchair_priority_active=True):
     """
     Traffic Light Decision Algorithm
     This file is hot-reloaded dynamically. No server restart required!
@@ -6,11 +7,15 @@ def decide_light(person_count, vehicle_count, wheelchair_count, current_light_st
     """
     command = "KEEP"
 
-    # ✅ 優先級 1：偵測到輪椅使用者，給予最長過街時間
-    if wheelchair_count > 0 and vehicle_count <= 1:
-        if current_light_state != "PED_WHEELCHAIR":
-            command = "PED_GREEN_30"
-            current_light_state = "PED_WHEELCHAIR"
+    # Emergency sequence is orchestrated upstream by control.py
+    if emergency_active:
+        return command, current_light_state
+
+    # ✅ 優先級 1：偵測到輪椅使用者，依人數調整秒數（上限 60s）
+    if wheelchair_priority_active and wheelchair_count > 0 and vehicle_count <= 1:
+        green_sec = min(10 + wheelchair_count * 10, 60)
+        command = f"PED_GREEN_{green_sec}"
+        current_light_state = "PED_WHEELCHAIR"
 
     # 優先級 2：大量行人
     elif person_count > 3 and vehicle_count <= 1:

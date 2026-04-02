@@ -11,6 +11,7 @@ from ..config import (
     TIDAL_BIAS_MARGIN,
 )
 from ..models import car_model
+from ..services.control import tick_emergency_phase
 from ..services.decode import decode_image
 from ..state import (
     frame_condition_car,
@@ -70,12 +71,14 @@ def _compute_tidal_direction():
 
 
 def process_car_data(obfuscated_bytes):
+    tick_emergency_phase()
+
     if not sys_state["detection"]:
         return {
             "cars": sys_state["cars"],
             "persons": sys_state["persons"],
             "wheelchairs": sys_state["wheelchairs"],
-            "command": "KEEP",
+            "command": sys_state["command"],
             "cars_total": sys_state["cars"],
             "lane_counts": sys_state["lane_counts"],
             "tidal_direction": sys_state["tidal_direction"],
@@ -128,7 +131,7 @@ def process_car_data(obfuscated_bytes):
         "cars": sys_state["cars"],
         "persons": sys_state["persons"],
         "wheelchairs": sys_state["wheelchairs"],
-        "command": "KEEP",
+        "command": sys_state["command"],
         "cars_total": sys_state["cars"],
         "lane_counts": lane_counts,
         "tidal_direction": tidal_direction,

@@ -67,7 +67,7 @@
 
 - 擷取相機影像並以同樣 XOR 方式混淆
 - 上傳到 `POST /detect_car`
-- 專注於車流偵測資料提供，不負責號誌指令下發
+- 會把 Mega 的 emergency 開始/結束事件轉發到後端（`/trigger_emergency`、`/clear_emergency`），讓 Web 狀態與實體燈同步
 
 ---
 
@@ -150,6 +150,10 @@ python app.py
 - `POST /set_mode`：切換 `AUTO` / `MANUAL`
 - `POST /manual_override`：手動送出號誌指令
 - `POST /toggle_detection`：切換 AI 偵測開關
+- `POST /toggle_emergency`：啟用/停用 emergency 優先功能
+- `POST /toggle_wheelchair_priority`：啟用/停用輪椅自適應綠燈秒數
+- `POST /trigger_emergency`：啟動 emergency 三階段狀態（`YELLOW -> ALL_RED -> HOLD`）
+- `POST /clear_emergency`：清除 emergency 狀態並回復一般邏輯
 - `POST /save_code`：儲存並熱重載 `logic.py`
 
 ---
@@ -159,8 +163,8 @@ python app.py
 1. ESP32-CAM 擷取影像並 XOR 混淆後上傳到 Flask API。  
 2. 伺服器解碼影像並執行 YOLO 推論，更新系統狀態。  
 3. 行人流程依 `logic.py` 計算 `command`。  
-4. Person 節點將 `command` 以序列格式送往 Arduino Mega。  
-5. Arduino Mega 依指令切換實體號誌燈。  
+4. Car 節點將目前 `command` 以序列格式送往 Arduino Mega。
+5. Arduino Mega 依指令切換實體號誌燈。
 
 ---
 

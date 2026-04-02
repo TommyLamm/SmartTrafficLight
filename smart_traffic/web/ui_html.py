@@ -335,6 +335,49 @@ INDEX_HTML = """
             .btn-detect-on  { background-color: #f87171; color: #450a0a; width: 100%; padding: 10px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
             .btn-detect-off { background-color: #4ade80; color: #064e3b; width: 100%; padding: 10px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
 
+            .feature-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px 0;
+                border-bottom: 1px solid #1e293b;
+            }
+            .feature-row:last-of-type { border-bottom: none; }
+            .feature-label { font-size: 0.9rem; color: #cbd5e1; }
+            .feature-sub { font-size: 0.75rem; color: #64748b; margin-top: 2px; }
+            .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+            .toggle-switch input { opacity: 0; width: 0; height: 0; }
+            .toggle-track {
+                position: absolute; inset: 0;
+                background-color: #334155;
+                border-radius: 9999px;
+                cursor: pointer;
+                transition: background-color 0.2s;
+            }
+            .toggle-track::before {
+                content: "";
+                position: absolute;
+                height: 18px; width: 18px;
+                left: 3px; bottom: 3px;
+                background-color: #fff;
+                border-radius: 50%;
+                transition: transform 0.2s;
+            }
+            .toggle-switch input:checked + .toggle-track { background-color: #4ade80; }
+            .toggle-switch input:checked + .toggle-track::before { transform: translateX(20px); }
+            .emergency-badge {
+                display: none;
+                margin-top: 8px;
+                border-radius: 4px;
+                padding: 8px 10px;
+                font-size: 0.82rem;
+                font-weight: 700;
+            }
+            .emergency-badge.phase-yellow { background: #854d0e; color: #fef08a; display: block; }
+            .emergency-badge.phase-allred { background: #7f1d1d; color: #fca5a5; display: block; }
+            .emergency-badge.phase-hold   { background: #991b1b; color: #fecaca; display: block; animation: pulse 1s infinite; }
+            @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
+
             ul { margin: 0; padding-left: 20px; color: #cbd5e1; font-size: 0.95rem; }
             li { margin-bottom: 5px; }
 
@@ -521,10 +564,27 @@ INDEX_HTML = """
 
                 <div class="panel">
                     <h3>Advanced Features</h3>
-                    <ul>
-                        <li>Emergency Priority: OFF</li>
-                        <li>Pedestrian Extension: ON</li>
-                    </ul>
+                    <div class="feature-row">
+                        <div>
+                            <div class="feature-label">🚨 Emergency Priority</div>
+                            <div class="feature-sub">RFID trigger drives 3-phase hardware + web sync</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-emergency" checked onchange="toggleFeature('emergency')">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
+                    <div id="emergency-badge" class="emergency-badge"></div>
+                    <div class="feature-row" style="margin-top:8px;">
+                        <div>
+                            <div class="feature-label">♿ Wheelchair Priority</div>
+                            <div class="feature-sub">Green time = 10s + 10s × users (max 60s)</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-wheelchair" checked onchange="toggleFeature('wheelchair')">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
                 </div>
             </div>
         </div>
@@ -790,6 +850,39 @@ INDEX_HTML = """
                 btn.className = 'btn-detect-off';
             }
 
+            function toggleFeature(feature) {
+                const url = feature === 'emergency'
+                    ? '/toggle_emergency'
+                    : '/toggle_wheelchair_priority';
+                fetch(url, { method: 'POST' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (feature === 'emergency') {
+                            document.getElementById('toggle-emergency').checked = !!data.emergency_priority_active;
+                        } else {
+                            document.getElementById('toggle-wheelchair').checked = !!data.wheelchair_priority_active;
+                        }
+                    })
+                    .catch(err => console.error('Feature toggle error:', err));
+            }
+
+            function renderEmergencyBadge(phase) {
+                const badge = document.getElementById('emergency-badge');
+                if (!badge) return;
+                badge.className = 'emergency-badge';
+                badge.textContent = '';
+                if (phase === 'YELLOW_WARNING') {
+                    badge.className += ' phase-yellow';
+                    badge.textContent = '⚠️ Phase 1/3 — Warning: preparing emergency sequence';
+                } else if (phase === 'ALL_RED_CLEAR') {
+                    badge.className += ' phase-allred';
+                    badge.textContent = '🔴 Phase 2/3 — All red clearing intersection';
+                } else if (phase === 'EMERGENCY_RED') {
+                    badge.className += ' phase-hold';
+                    badge.textContent = '🚨 Phase 3/3 — Emergency hold';
+                }
+            }
+
             // ===== LIVE STATS POLL =====
             setInterval(() => {
                 fetch(`/stats?t=${Date.now()}`, { cache: 'no-store' })
@@ -800,7 +893,10 @@ INDEX_HTML = """
                         document.getElementById('val-wheelchairs').innerText = data.wheelchairs || 0;
 
                         let uiState = "⏳ Awaiting AI Detection...";
-                        if (data.light_state === "PED_WHEELCHAIR") uiState = "♿ Wheelchair Priority (Extended)";
+                        if (data.light_state === "EMERGENCY_YELLOW") uiState = "⚠️ Emergency — Yellow Warning";
+                        else if (data.light_state === "EMERGENCY_ALL_RED") uiState = "🔴 Emergency — All Red Clear";
+                        else if (data.light_state === "EMERGENCY_RED") uiState = "🚨 Emergency — Hold";
+                        else if (data.light_state === "PED_WHEELCHAIR") uiState = "♿ Wheelchair Priority (Adaptive)";
                         else if (data.light_state === "CAR_GREEN") uiState = "🟢 Green - Vehicles (N/S)";
                         else if (data.light_state === "PED_LONG") uiState = "🚶 Pedestrian (Extended)";
                         else if (data.light_state === "PED_SHORT") uiState = "🚶 Pedestrian (Standard)";
@@ -825,6 +921,14 @@ INDEX_HTML = """
                         if (Array.isArray(data.violations)) {
                             renderViolationsGrid(data.violations);
                         }
+
+                        const chkEmergency = document.getElementById('toggle-emergency');
+                        const chkWheelchair = document.getElementById('toggle-wheelchair');
+                        if (chkEmergency && typeof data.emergency_priority_active === 'boolean')
+                            chkEmergency.checked = data.emergency_priority_active;
+                        if (chkWheelchair && typeof data.wheelchair_priority_active === 'boolean')
+                            chkWheelchair.checked = data.wheelchair_priority_active;
+                        renderEmergencyBadge(data.emergency_phase || null);
 
                         renderDetectionButton(data.detection);
                     })

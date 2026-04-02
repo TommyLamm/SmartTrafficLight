@@ -24,6 +24,8 @@ const char *password = "";
 // ─────────────────────── SERVER ENDPOINTS ───────────────────
 const String serverName          = "http://stl.gyke.net/detect_car";
 const String violationServerName = "http://stl.gyke.net/capture_violation";
+const String emergencyTriggerUrl = "http://stl.gyke.net/trigger_emergency";
+const String emergencyClearUrl   = "http://stl.gyke.net/clear_emergency";
 
 const char* XOR_KEY = "MyIoTKey2026";
 
@@ -57,6 +59,9 @@ unsigned long lastViolationTime = 0;
 // Violation queue — counts how many captures are pending
 volatile int  violationQueue    = 0;
 const int     MAX_QUEUE         = 5;   // safety cap
+bool          emergencyWebhookActive = false;
+unsigned long lastEmergencyWebhookMs = 0;
+const int     EMERGENCY_WEBHOOK_COOLDOWN = 2000;
 
 // ============================================================
 //  SETUP
@@ -189,6 +194,11 @@ void checkMegaSerial() {
     }
     else if (msg == "EMERGENCY_DETECTED") {
       Serial.println("[ESP32] Emergency vehicle confirmed by Mega RFID.");
+      triggerEmergencyWebhook();
+    }
+    else if (msg == "EMERGENCY_CLEARED") {
+      Serial.println("[ESP32] Emergency sequence cleared by Mega.");
+      clearEmergencyWebhook();
     }
     else if (msg == "JAM_DETECTED") {
       Serial.println("[ESP32] Traffic jam reported by Mega pressure sensor.");
@@ -331,4 +341,35 @@ void restoreNormalCameraSettings() {
     s->set_quality(s, 12);
     s->set_contrast(s, 1);
   }
+}
+
+void postEmergencyEvent(const String& url, const char* payload) {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  HTTPClient http;
+  http.setReuse(false);
+  http.setTimeout(2000);
+  http.begin(wifiClient, url);
+  http.addHeader("Content-Type", "application/json");
+  int code = http.POST(payload);
+  if (code <= 0) {
+    wifiClient.stop();
+  }
+  http.end();
+}
+
+void triggerEmergencyWebhook() {
+  unsigned long now = millis();
+  if (emergencyWebhookActive || (now - lastEmergencyWebhookMs < EMERGENCY_WEBHOOK_COOLDOWN)) {
+    return;
+  }
+  emergencyWebhookActive = true;
+  lastEmergencyWebhookMs = now;
+  postEmergencyEvent(emergencyTriggerUrl, "{}");
+}
+
+void clearEmergencyWebhook() {
+  emergencyWebhookActive = false;
+  lastEmergencyWebhookMs = millis();
+  postEmergencyEvent(emergencyClearUrl, "{}");
 }

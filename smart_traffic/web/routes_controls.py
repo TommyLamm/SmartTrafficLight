@@ -3,6 +3,7 @@ import os
 from flask import Blueprint, jsonify, request, send_from_directory
 
 import smart_traffic.state as state
+from smart_traffic.services.control import clear_emergency, tick_emergency_phase, trigger_emergency_vehicle
 
 VIOLATIONS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "violations"
@@ -22,6 +23,7 @@ def _json_no_cache(payload, status=200):
 
 @bp_controls.route('/stats')
 def stats():
+    tick_emergency_phase()
     data = dict(state.sys_state)
     data["stream_car_online"] = state.is_car_stream_online()
     data["stream_person_online"] = state.is_person_stream_online()
@@ -51,6 +53,40 @@ def manual_override():
 def toggle_detection():
     state.sys_state["detection"] = not state.sys_state["detection"]
     return jsonify({"success": True, "detection": state.sys_state["detection"]})
+
+
+@bp_controls.route('/toggle_emergency', methods=['POST'])
+def toggle_emergency():
+    state.sys_state["emergency_priority_active"] = not state.sys_state["emergency_priority_active"]
+    active = state.sys_state["emergency_priority_active"]
+    if not active:
+        clear_emergency()
+    return jsonify({"success": True, "emergency_priority_active": active})
+
+
+@bp_controls.route('/toggle_wheelchair_priority', methods=['POST'])
+def toggle_wheelchair_priority():
+    state.sys_state["wheelchair_priority_active"] = not state.sys_state["wheelchair_priority_active"]
+    return jsonify({
+        "success": True,
+        "wheelchair_priority_active": state.sys_state["wheelchair_priority_active"],
+    })
+
+
+@bp_controls.route('/trigger_emergency', methods=['POST'])
+def trigger_emergency_route():
+    trigger_emergency_vehicle()
+    return jsonify({
+        "success": True,
+        "phase": state.sys_state["emergency_phase"],
+        "light_state": state.sys_state["light_state"],
+    })
+
+
+@bp_controls.route('/clear_emergency', methods=['POST'])
+def clear_emergency_route():
+    clear_emergency()
+    return jsonify({"success": True})
 
 
 @bp_controls.route('/lane_boundaries')

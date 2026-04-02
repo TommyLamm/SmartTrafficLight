@@ -67,7 +67,7 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 
 - Captures camera frames and obfuscates them using the same XOR method
 - Uploads frames to `POST /detect_car`
-- Focused solely on providing vehicle detection data; does not handle signal command dispatch
+- Forwards emergency start/clear events from Mega to backend (`/trigger_emergency`, `/clear_emergency`) to keep web state in sync with hardware phases
 
 ---
 
@@ -150,6 +150,10 @@ Once running:
 - `POST /set_mode` — Switch between `AUTO` and `MANUAL` modes
 - `POST /manual_override` — Send a manual signal command
 - `POST /toggle_detection` — Toggle AI detection on/off
+- `POST /toggle_emergency` — Enable/disable emergency-priority feature
+- `POST /toggle_wheelchair_priority` — Enable/disable adaptive wheelchair timing
+- `POST /trigger_emergency` — Start emergency 3-phase state (`YELLOW -> ALL_RED -> HOLD`)
+- `POST /clear_emergency` — Clear emergency state and resume normal logic
 - `POST /save_code` — Save and hot-reload `logic.py`
 
 ---
@@ -159,7 +163,7 @@ Once running:
 1. The ESP32-CAM captures frames, obfuscates them via XOR, and uploads them to the Flask API.
 2. The server decodes the frames, runs YOLO inference, and updates the system state.
 3. The pedestrian pipeline computes a `command` according to `logic.py`.
-4. The Person node sends the `command` in serial format to the Arduino Mega.
+4. The Car node forwards the current `command` in serial format to the Arduino Mega.
 5. The Arduino Mega switches the physical signal lights according to the command.
 
 ---

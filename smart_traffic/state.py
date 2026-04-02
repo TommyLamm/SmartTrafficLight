@@ -49,6 +49,10 @@ sys_state = {
     "tidal_direction": "BALANCED",
     "violations": [],
     "plates": [],                                  # ← NEW: rolling OCR history
+    "emergency_priority_active": True,
+    "wheelchair_priority_active": True,
+    "emergency_phase": None,
+    "emergency_phase_until": 0.0,
 }
 
 # ── lane-boundary state (unchanged from original) ────────────────────────────

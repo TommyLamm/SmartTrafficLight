@@ -66,7 +66,9 @@
 
 // Timing (ms)
 #define FAILSAFE_TIMEOUT   5000UL   // lose ESP32 heartbeat → failsafe
-#define EMERGENCY_DURATION 15000UL  // RFID emergency green duration
+#define EMERGENCY_DURATION 15000UL  // emergency hold duration
+#define EMERGENCY_YELLOW_DUR 3000UL
+#define EMERGENCY_ALL_RED_DUR 5000UL
 #define YELLOW_DURATION     3000UL
 #define PED_BLINK_DURATION  4000UL
 #define PED_RED_WAIT_DUR    2000UL
@@ -116,7 +118,9 @@ enum TrafficState {
   STATE_PED_GREEN,
   STATE_PED_BLINK,
   STATE_PED_RED_WAIT,
-  STATE_EMERGENCY       // RFID emergency-vehicle override
+  STATE_EMERGENCY_YELLOW,
+  STATE_EMERGENCY_ALL_RED,
+  STATE_EMERGENCY_RED_HOLD
 };
 
 // Tidal-lane modes (commanded by ESP32 via [LANE_xxx] packets)
@@ -248,7 +252,7 @@ void loop() {
   }
 
   // ── 8. CANCEL VIOLATION FLAG ONCE LIGHT TURNS GREEN ─────
-  bool carGreen = (currentState == STATE_CAR_GREEN || currentState == STATE_EMERGENCY);
+  bool carGreen = (currentState == STATE_CAR_GREEN);
   if (carGreen) {
     redLightViolation = false; // clear stale flag when light is green
   }
@@ -266,7 +270,7 @@ void loop() {
 //  Protocol: [COMMAND] packets on Serial1
 //  Commands received:
 //    CAR_GREEN         — push traffic to car-green cycle
-//    PED_GREEN_10/20/30 — pedestrian crossing duration
+//    PED_GREEN_<sec>   — pedestrian crossing duration (seconds)
 //    LANE_STRAIGHT / LEFT / RIGHT / LEFT_STRAIGHT /
 //    LANE_RIGHT_STRAIGHT / LEFT_RIGHT / ALL / CLOSED
 //    COUNT_xx          — update vehicle count (xx = number)
@@ -294,22 +298,50 @@ void handleSerial1() {
   // ── Traffic light commands ─────────────────────────────
   if (cmd == "CAR_GREEN") {
     if (currentState != STATE_CAR_GREEN && currentState != STATE_CAR_YELLOW
-        && currentState != STATE_EMERGENCY) {
+        && currentState != STATE_EMERGENCY_YELLOW
+        && currentState != STATE_EMERGENCY_ALL_RED
+        && currentState != STATE_EMERGENCY_RED_HOLD) {
       Serial.println(">> [CMD] Priority: switch to car-green cycle.");
       switchState(STATE_PED_BLINK);
     }
   }
-  else if (cmd == "PED_GREEN_10") {
-    Serial.println(">> [CMD] Pedestrian crossing — 10 s.");
-    requestPedestrianCrossing(10000);
+  else if (cmd.startsWith("PED_GREEN_")) {
+    long seconds = cmd.substring(10).toInt();
+    if (seconds >= 5 && seconds <= 120) {
+      Serial.print(">> [CMD] Pedestrian crossing — ");
+      Serial.print(seconds);
+      Serial.println(" s.");
+      requestPedestrianCrossing((unsigned long)seconds * 1000UL);
+    } else {
+      Serial.print(">> [CMD] Invalid PED_GREEN duration: ");
+      Serial.println(cmd);
+    }
   }
-  else if (cmd == "PED_GREEN_20") {
-    Serial.println(">> [CMD] Pedestrian crossing — 20 s.");
-    requestPedestrianCrossing(20000);
+  else if (cmd == "EMERGENCY_YELLOW") {
+    emergencyActive = true;
+    if (currentState != STATE_EMERGENCY_YELLOW) {
+      emergencyStartTime = 0;
+      switchState(STATE_EMERGENCY_YELLOW);
+    }
   }
-  else if (cmd == "PED_GREEN_30") {
-    Serial.println(">> [CMD] Wheelchair priority — 30 s.");
-    requestPedestrianCrossing(30000);
+  else if (cmd == "EMERGENCY_ALL_RED") {
+    emergencyActive = true;
+    if (currentState != STATE_EMERGENCY_ALL_RED && currentState != STATE_EMERGENCY_RED_HOLD) {
+      switchState(STATE_EMERGENCY_ALL_RED);
+    }
+  }
+  else if (cmd == "EMERGENCY_RED") {
+    emergencyActive = true;
+    if (currentState != STATE_EMERGENCY_RED_HOLD) {
+      emergencyStartTime = millis();
+      switchState(STATE_EMERGENCY_RED_HOLD);
+    }
+  }
+  else if (cmd == "EMERGENCY_CLEAR") {
+    emergencyActive = false;
+    emergencyStartTime = 0;
+    switchState(STATE_PED_RED_WAIT);
+    Serial2.println("[EMERGENCY_CLEARED]");
   }
 
   // ── Tidal lane commands ────────────────────────────────
@@ -423,19 +455,22 @@ void BrightnessControl(){
 // ============================================================
 //  SECTION D — RFID EMERGENCY VEHICLE DETECTION
 //  Reads MFRC522. If a known emergency UID is detected,
-//  the system immediately switches to STATE_EMERGENCY
-//  (car gets green) for EMERGENCY_DURATION ms.
+//  the system enters emergency 3-phase sequence:
+//  EMERGENCY_YELLOW -> EMERGENCY_ALL_RED -> EMERGENCY_RED_HOLD.
 // ============================================================
 void checkRFID() {
 #if !ENABLE_RFID
   return;
 #else
-  // Check if emergency already active and has expired
-  if (emergencyActive &&
-      (millis() - emergencyStartTime > EMERGENCY_DURATION)) {
-    emergencyActive = false;
-    Serial.println("[RFID] Emergency period ended — resuming normal cycle.");
-    switchState(STATE_CAR_YELLOW);  // transition through yellow
+  if (emergencyActive) {
+    if (currentState == STATE_EMERGENCY_RED_HOLD &&
+        (millis() - emergencyStartTime > EMERGENCY_DURATION)) {
+      emergencyActive = false;
+      emergencyStartTime = 0;
+      Serial.println("[RFID] Emergency period ended — resuming normal cycle.");
+      Serial2.println("[EMERGENCY_CLEARED]");
+      switchState(STATE_PED_RED_WAIT);
+    }
     return;
   }
 
@@ -460,8 +495,8 @@ void checkRFID() {
     Serial.println("[RFID] *** EMERGENCY VEHICLE DETECTED — Override! ***");
     Serial2.println("[EMERGENCY_DETECTED]");  // notify ESP32
     emergencyActive    = true;
-    emergencyStartTime = millis();
-    switchState(STATE_EMERGENCY);
+    emergencyStartTime = 0;
+    switchState(STATE_EMERGENCY_YELLOW);
   }
   else {
     // Log unknown tag UID for debugging
@@ -522,13 +557,23 @@ void runStateMachine() {
       if (timeInState > PED_RED_WAIT_DUR) switchState(STATE_CAR_GREEN);
       break;
 
-    // EMERGENCY OVERRIDE — car green held until timer expires
-    // (timer managed in checkRFID)
-    case STATE_EMERGENCY:
-      setLights(0, 1, 0,  1, 0, 0);   // Car: Green, Ped: Red
-      // Flicker blue to signal emergency mode
+    case STATE_EMERGENCY_YELLOW:
+      setLights(1, 1, 0,  1, 0, 0);
+      if (timeInState > EMERGENCY_YELLOW_DUR) switchState(STATE_EMERGENCY_ALL_RED);
+      break;
+
+    case STATE_EMERGENCY_ALL_RED:
+      setLights(1, 0, 0,  1, 0, 0);
+      if (timeInState > EMERGENCY_ALL_RED_DUR) {
+        emergencyStartTime = millis();
+        switchState(STATE_EMERGENCY_RED_HOLD);
+      }
+      break;
+
+    case STATE_EMERGENCY_RED_HOLD:
+      setLights(1, 0, 0,  1, 0, 0);
       if ((timeInState / 300) % 2 == 0) {
-        analogWrite(CAR_BLUE_PIN, brightness / 3);  // subtle blue pulse
+        analogWrite(CAR_BLUE_PIN, brightness / 3);
       } else {
         analogWrite(CAR_BLUE_PIN, 0);
       }
@@ -700,7 +745,7 @@ void writeEmergency() {
 // ============================================================
 
 void requestPedestrianCrossing(unsigned long duration) {
-  if (currentState == STATE_CAR_GREEN) {
+  if (currentState == STATE_CAR_GREEN && !emergencyActive) {
     pedGreenDuration = duration;
     switchState(STATE_CAR_YELLOW);
   }
@@ -768,10 +813,17 @@ void printSystemStatus(unsigned long timeInState) {
       lightStr  = "Car:RED | Ped:RED";
       remaining = ((long)PED_RED_WAIT_DUR  - (long)timeInState) / 1000;
       break;
-    case STATE_EMERGENCY:
-      lightStr  = "Car:GRN | Ped:RED";
-      remaining = ((long)EMERGENCY_DURATION -
-                   (long)(millis() - emergencyStartTime)) / 1000;
+    case STATE_EMERGENCY_YELLOW:
+      lightStr  = "Emergency:YELLOW";
+      remaining = ((long)EMERGENCY_YELLOW_DUR - (long)timeInState) / 1000;
+      break;
+    case STATE_EMERGENCY_ALL_RED:
+      lightStr  = "Emergency:ALL_RED";
+      remaining = ((long)EMERGENCY_ALL_RED_DUR - (long)timeInState) / 1000;
+      break;
+    case STATE_EMERGENCY_RED_HOLD:
+      lightStr  = "Emergency:RED_HOLD";
+      remaining = ((long)EMERGENCY_DURATION - (long)(millis() - emergencyStartTime)) / 1000;
       break;
   }
 
