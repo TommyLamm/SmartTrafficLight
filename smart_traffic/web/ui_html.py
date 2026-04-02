@@ -37,7 +37,6 @@ INDEX_HTML = """
             .video-box {
                 background-color: #334155; 
                 width: 100%;
-                /* Fixed aspect-ratio removed, adapts to image */
                 min-height: 240px;
                 border-radius: 4px; 
                 display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
@@ -80,7 +79,7 @@ INDEX_HTML = """
                 letter-spacing: 0.5px;
                 cursor: pointer;
                 user-select: none;
-                list-style: none; /* Hide default triangle */
+                list-style: none;
                 outline: none;
             }
             .lane-tuning-header::-webkit-details-marker {
@@ -111,7 +110,6 @@ INDEX_HTML = """
             .lane-slider-item { display: flex; flex-direction: column; gap: 5px; }
             .lane-slider-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #94a3b8; font-weight: 500;}
             .lane-slider-head span:last-child { color: #f8fafc; font-variant-numeric: tabular-nums; background: #334155; padding: 2px 6px; border-radius: 4px;}
-            
             .lane-slider-item input[type="range"] { 
                 width: 100%; 
                 margin: 0;
@@ -122,7 +120,6 @@ INDEX_HTML = """
 
             .side-panels { display: flex; flex-direction: column; gap: 15px; }
             
-            /* RWD for Mobile */
             @media (max-width: 768px) {
                 body { padding: 10px; }
                 .main-container { 
@@ -136,7 +133,6 @@ INDEX_HTML = """
                     grid-template-columns: 1fr;
                 }
                 .video-box {
-                    /* On mobile, auto height based on width */
                     height: auto;
                 }
                 .settings-button {
@@ -150,14 +146,12 @@ INDEX_HTML = """
             .panel p { margin: 0; color: #cbd5e1; font-size: 0.95rem; }
             .dot { color: #4ade80; margin-right: 5px; font-size: 1.2rem; }
 
-            /* Interactive Mode Buttons */
             .controls-row { display: flex; justify-content: space-between; gap:10px; margin-bottom: 15px; }
             .btn-mode { padding: 10px; border-radius: 4px; width: 48%; cursor: pointer; border: none; font-weight: bold; transition: 0.2s;}
             .active-auto { background-color: #4ade80; color: #064e3b; }
             .active-manual { background-color: #f87171; color: #450a0a; }
             .inactive { background-color: #334155; color: #94a3b8; border: 1px solid #475569; }
             
-            /* Manual Override Commands */
             .manual-actions { display: none; gap: 10px; justify-content: space-between; }
             .btn-action { padding: 8px; border-radius: 4px; border: 1px solid #38bdf8; background: #0f172a; color: #38bdf8; cursor: pointer; width: 48%; font-weight:bold;}
             .btn-action:hover { background: #38bdf8; color: #0f172a; }
@@ -168,7 +162,6 @@ INDEX_HTML = """
             ul { margin: 0; padding-left: 20px; color: #cbd5e1; font-size: 0.95rem; }
             li { margin-bottom: 5px; }
 
-            /* ========= 新增：設定按鈕 + Editor 視窗 ========= */
             .settings-button {
                 position: fixed;
                 top: 10px;
@@ -191,7 +184,7 @@ INDEX_HTML = """
                 height: 100vh;
                 background: rgba(0, 0, 0, 0.6);
                 z-index: 1999;
-                display: none; /* 起始隱藏 */
+                display: none;
                 align-items: center;
                 justify-content: center;
             }
@@ -231,14 +224,61 @@ INDEX_HTML = """
                 cursor: pointer;
                 font-size: 16px;
             }
+
+            /* ── Advanced Features Toggle Switches ── */
+            .feature-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px 0;
+                border-bottom: 1px solid #1e293b;
+            }
+            .feature-row:last-of-type { border-bottom: none; }
+            .feature-label { font-size: 0.9rem; color: #cbd5e1; }
+            .feature-sub   { font-size: 0.75rem; color: #64748b; margin-top: 2px; }
+
+            /* iOS-style toggle */
+            .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+            .toggle-switch input { opacity: 0; width: 0; height: 0; }
+            .toggle-track {
+                position: absolute; inset: 0;
+                background-color: #334155;
+                border-radius: 9999px;
+                cursor: pointer;
+                transition: background-color 0.2s;
+            }
+            .toggle-track::before {
+                content: "";
+                position: absolute;
+                height: 18px; width: 18px;
+                left: 3px; bottom: 3px;
+                background-color: #fff;
+                border-radius: 50%;
+                transition: transform 0.2s;
+            }
+            .toggle-switch input:checked + .toggle-track { background-color: #4ade80; }
+            .toggle-switch input:checked + .toggle-track::before { transform: translateX(20px); }
+
+            /* Emergency status badge */
+            .emergency-badge {
+                display: none;
+                margin-top: 8px;
+                padding: 6px 10px;
+                border-radius: 4px;
+                font-size: 0.8rem;
+                font-weight: bold;
+                text-align: center;
+            }
+            .emergency-badge.phase-yellow { background: #854d0e; color: #fef08a; display: block; }
+            .emergency-badge.phase-allred { background: #7f1d1d; color: #fca5a5; display: block; }
+            .emergency-badge.phase-hold   { background: #991b1b; color: #fecaca; display: block; animation: pulse 1s infinite; }
+            @keyframes pulse { 0%,100% { opacity:1; } 50% { opacity:0.6; } }
         </style>
     </head>
     <body>
 
-        <!-- 新增：右上角設定按鈕 -->
         <button id="settings-btn" class="settings-button">⚙</button>
 
-        <!-- 新增：Editor 彈出視窗（iframe 載入 stledit.gyke.net） -->
         <div id="editor-modal" class="editor-modal">
           <div class="editor-modal-content">
             <div class="editor-modal-header">
@@ -326,7 +366,6 @@ INDEX_HTML = """
                         <button id="btn-auto" class="btn-mode active-auto" onclick="setMode('AUTO')">Auto Mode</button>
                         <button id="btn-manual" class="btn-mode inactive" onclick="setMode('MANUAL')">Manual</button>
                     </div>
-                    <!-- Manual Override Buttons -->
                     <div id="manual-actions" class="manual-actions">
                         <button class="btn-action" onclick="forceCommand('CAR_GREEN', this)">🚗 Force Car Green</button>
                         <button class="btn-action" onclick="forceCommand('PED_GREEN_20', this)">🚶 Force Ped Green</button>
@@ -340,12 +379,32 @@ INDEX_HTML = """
 
                 <div class="panel">
                     <h3>Advanced Features</h3>
-                    <ul>
-                        <li>Emergency Priority: OFF</li>
-                        <li>Pedestrian Extension: ON</li>
-                    </ul>
-                </div>
 
+                    <!-- Emergency Vehicle Priority -->
+                    <div class="feature-row">
+                        <div>
+                            <div class="feature-label">🚨 Emergency Priority</div>
+                            <div class="feature-sub">3-phase safety sequence on RFID scan</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-emergency" checked onchange="toggleFeature('emergency')">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
+                    <div id="emergency-badge" class="emergency-badge"></div>
+
+                    <!-- Wheelchair Adaptive Green Time -->
+                    <div class="feature-row" style="margin-top: 8px;">
+                        <div>
+                            <div class="feature-label">♿ Wheelchair Priority</div>
+                            <div class="feature-sub">Green time = 10s + 10s × users (max 60s)</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-wheelchair" checked onchange="toggleFeature('wheelchair')">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
+                </div>
 
             </div>
         </div>
@@ -546,6 +605,42 @@ INDEX_HTML = """
                 btn.className = 'btn-detect-off';
             }
 
+            // ── Advanced Feature Toggles ──────────────────────────────────
+            function toggleFeature(feature) {
+                const url = feature === 'emergency'
+                    ? '/toggle_emergency'
+                    : '/toggle_wheelchair_priority';
+                fetch(url, { method: 'POST' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (feature === 'emergency') {
+                            document.getElementById('toggle-emergency').checked =
+                                !!data.emergency_priority_active;
+                        } else {
+                            document.getElementById('toggle-wheelchair').checked =
+                                !!data.wheelchair_priority_active;
+                        }
+                    })
+                    .catch(err => console.error('Feature toggle error:', err));
+            }
+
+            // ── Emergency badge renderer ──────────────────────────────────
+            function renderEmergencyBadge(phase) {
+                const badge = document.getElementById('emergency-badge');
+                if (!badge) return;
+                badge.className = 'emergency-badge';
+                if (phase === 'YELLOW_WARNING') {
+                    badge.className += ' phase-yellow';
+                    badge.textContent = '⚠️ Phase 1/3 — Warning: Clearing crossing…';
+                } else if (phase === 'ALL_RED_CLEAR') {
+                    badge.className += ' phase-allred';
+                    badge.textContent = '🔴 Phase 2/3 — All Red: Intersection clearing…';
+                } else if (phase === 'EMERGENCY_RED') {
+                    badge.className += ' phase-hold';
+                    badge.textContent = '🚨 Phase 3/3 — Emergency vehicle holding';
+                }
+            }
+
             // Live Update
             setInterval(() => {
                 fetch(`/stats?t=${Date.now()}`, { cache: 'no-store' })
@@ -554,20 +649,32 @@ INDEX_HTML = """
                         document.getElementById('val-persons').innerText = data.persons;
                         document.getElementById('val-cars').innerText = data.cars;
                         document.getElementById('val-wheelchairs').innerText = data.wheelchairs || 0;
-                        // Proper Mapping for UI Text
+
+                        // uiState mapping
                         let uiState = "⏳ Awaiting AI Detection...";
-                        if(data.light_state === "PED_WHEELCHAIR") uiState = "♿ Wheelchair Priority (Extended)";
-                        else if(data.light_state === "CAR_GREEN") uiState = "🟢 Green - Vehicles (N/S)";
-                        else if(data.light_state === "PED_LONG") uiState = "🚶 Pedestrian (Extended)";
-                        else if(data.light_state === "PED_SHORT") uiState = "🚶 Pedestrian (Standard)";
-                        else if(data.light_state === "MANUAL_OVERRIDE") {
-                            uiState = "⚠️ Manual Override: " + (data.last_manual_label || "Unknown");
-                        }
-                        
+                        if (data.light_state === 'EMERGENCY_YELLOW')
+                            uiState = '⚠️ Emergency — Warning Phase';
+                        else if (data.light_state === 'EMERGENCY_ALL_RED')
+                            uiState = '🔴 Emergency — Clearing Intersection';
+                        else if (data.light_state === 'EMERGENCY_RED')
+                            uiState = '🚨 Emergency — Vehicle Priority Hold';
+                        else if (data.light_state === 'PED_WHEELCHAIR')
+                            uiState = '♿ Wheelchair Priority (Adaptive)';
+                        else if (data.light_state === 'CAR_GREEN')
+                            uiState = '🟢 Green - Vehicles (N/S)';
+                        else if (data.light_state === 'PED_LONG')
+                            uiState = '🚶 Pedestrian (Extended)';
+                        else if (data.light_state === 'PED_SHORT')
+                            uiState = '🚶 Pedestrian (Standard)';
+                        else if (data.light_state === 'MANUAL_OVERRIDE')
+                            uiState = '⚠️ Manual Override: ' + (data.last_manual_label || 'Unknown');
+
                         document.getElementById('val-state').innerText = uiState;
+
                         connectStreamIfNeeded('streamImgCar', '/video_feed_car', data.stream_car_online);
                         connectStreamIfNeeded('streamImgPerson', '/video_feed_person', data.stream_person_online);
                         renderSystemMode(data.mode);
+
                         if (data.lane_boundaries && typeof data.lane_boundaries.revision === 'number') {
                             const isDragging = nowMs() < laneBoundaryDraggingUntil;
                             if (!isDragging && isBoundaryStateNewer(data.lane_boundaries, laneBoundaries)) {
@@ -578,6 +685,16 @@ INDEX_HTML = """
                         }
 
                         renderDetectionButton(data.detection);
+
+                        // Sync feature toggle checkboxes with server state
+                        const chkEmergency  = document.getElementById('toggle-emergency');
+                        const chkWheelchair = document.getElementById('toggle-wheelchair');
+                        if (chkEmergency  && typeof data.emergency_priority_active  === 'boolean')
+                            chkEmergency.checked  = data.emergency_priority_active;
+                        if (chkWheelchair && typeof data.wheelchair_priority_active === 'boolean')
+                            chkWheelchair.checked = data.wheelchair_priority_active;
+
+                        renderEmergencyBadge(data.emergency_phase || null);
                     })
                     .catch(err => console.error(err));
             }, 1000);
@@ -588,7 +705,6 @@ INDEX_HTML = """
                     .then(data => renderDetectionButton(data.detection));
             }
 
-            // Auto / Manual System Controls Logic
             function setMode(mode) {
                 fetch('/set_mode', {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -647,7 +763,6 @@ INDEX_HTML = """
                 }
             }
 
-            // ========= 新增：設定按鈕開關 Editor =========
             document.addEventListener('DOMContentLoaded', function () {
                 connectStreamIfNeeded('streamImgCar', '/video_feed_car', false);
                 connectStreamIfNeeded('streamImgPerson', '/video_feed_person', false);
@@ -662,7 +777,6 @@ INDEX_HTML = """
 
                 if (settingsBtn && editorModal && editorClose && editorFrame) {
                     settingsBtn.addEventListener('click', function () {
-                        // 只在第一次打開時載入 iframe，避免每次都重新載入
                         if (!editorFrame.src && editorFrame.dataset.src) {
                             editorFrame.src = editorFrame.dataset.src;
                         }
