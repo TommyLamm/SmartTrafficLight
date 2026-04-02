@@ -23,11 +23,9 @@ def decide_light(person_count, vehicle_count, wheelchair_count, current_light_st
 
     # Priority 1: Wheelchair users — adaptive green time
     if wheelchair_priority_active and wheelchair_count > 0 and vehicle_count <= 1:
-        green_sec = min(10 + wheelchair_count * 10, 60)
-        target_cmd = f"PED_GREEN_{green_sec}"
-        if current_light_state != "PED_WHEELCHAIR":
-            command = target_cmd
-            current_light_state = "PED_WHEELCHAIR"
+    	green_sec = min(10 + wheelchair_count * 10, 60)
+    	command = f"PED_GREEN_{green_sec}"
+    	current_light_state = "PED_WHEELCHAIR"
 
     # Priority 2: Heavy pedestrian traffic
     elif person_count > 3 and vehicle_count <= 1:
