@@ -1,6 +1,7 @@
 from flask import Blueprint, jsonify, request
 
 import smart_traffic.state as state
+from smart_traffic.services.control import clear_emergency, trigger_emergency_vehicle
 
 
 bp_controls = Blueprint("controls", __name__)
@@ -45,6 +46,48 @@ def toggle_detection():
     return jsonify({"success": True, "detection": state.sys_state["detection"]})
 
 
+# ── Feature Toggle: Emergency Vehicle Priority ────────────────────────────
+@bp_controls.route('/toggle_emergency', methods=['POST'])
+def toggle_emergency():
+    """
+    Toggle the emergency vehicle RFID priority feature on/off.
+    If turned off while an emergency is active, the emergency is also cleared.
+    """
+    state.sys_state["emergency_priority_active"] = not state.sys_state["emergency_priority_active"]
+    active = state.sys_state["emergency_priority_active"]
+    if not active:
+        clear_emergency()
+    return jsonify({"success": True, "emergency_priority_active": active})
+
+
+# ── Feature Toggle: Wheelchair Adaptive Green Time ────────────────────────
+@bp_controls.route('/toggle_wheelchair_priority', methods=['POST'])
+def toggle_wheelchair_priority():
+    """Toggle the adaptive wheelchair green time feature on/off."""
+    state.sys_state["wheelchair_priority_active"] = not state.sys_state["wheelchair_priority_active"]
+    active = state.sys_state["wheelchair_priority_active"]
+    return jsonify({"success": True, "wheelchair_priority_active": active})
+
+
+# ── Emergency Vehicle RFID Trigger ────────────────────────────────────────
+@bp_controls.route('/trigger_emergency', methods=['POST'])
+def trigger_emergency_route():
+    """
+    Called by the RFID reader (or for manual testing) to start the
+    3-phase emergency vehicle priority sequence.
+    """
+    trigger_emergency_vehicle()
+    return jsonify({"success": True, "phase": state.sys_state["emergency_phase"]})
+
+
+@bp_controls.route('/clear_emergency', methods=['POST'])
+def clear_emergency_route():
+    """Manually clear an active emergency and return to normal AUTO logic."""
+    clear_emergency()
+    return jsonify({"success": True})
+
+
+# ── Lane Boundaries (unchanged from original) ─────────────────────────────
 @bp_controls.route('/lane_boundaries')
 def lane_boundaries():
     return _json_no_cache(state.get_lane_boundaries())
@@ -67,9 +110,9 @@ def _parse_ratio(payload, key):
 def set_lane_boundaries():
     payload = request.json or {}
     try:
-        b1_top = _parse_ratio(payload, "boundary1_top")
+        b1_top    = _parse_ratio(payload, "boundary1_top")
         b1_bottom = _parse_ratio(payload, "boundary1_bottom")
-        b2_top = _parse_ratio(payload, "boundary2_top")
+        b2_top    = _parse_ratio(payload, "boundary2_top")
         b2_bottom = _parse_ratio(payload, "boundary2_bottom")
     except ValueError as e:
         return _json_no_cache({"success": False, "error": str(e)}, status=400)

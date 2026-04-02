@@ -39,7 +39,22 @@ sys_state = {
     "last_manual_label": None,
     "detection": True,
     "lane_counts": [0] * CAR_LANE_REGION_COUNT,
-    "tidal_direction": "BALANCED"
+    "tidal_direction": "BALANCED",
+
+    # ── Feature Flags ──────────────────────────────────────────────────────
+    # emergency_priority_active: When True, an RFID scan triggers a 3-phase
+    #   safety sequence: YELLOW_WARNING (3s) → ALL_RED_CLEAR (5s) → EMERGENCY_RED
+    "emergency_priority_active": True,
+
+    # wheelchair_priority_active: When True, detected wheelchair users receive
+    #   adaptive green time (10s + 10s per user, capped at 60s)
+    "wheelchair_priority_active": True,
+
+    # ── Emergency Phase State Machine ──────────────────────────────────────
+    # emergency_phase: None | 'YELLOW_WARNING' | 'ALL_RED_CLEAR' | 'EMERGENCY_RED'
+    "emergency_phase": None,
+    # emergency_phase_until: epoch seconds when current phase expires (0 = not active)
+    "emergency_phase_until": 0.0,
 }
 
 lane_sample_window = deque(maxlen=TIDAL_SAMPLE_WINDOW)
