@@ -7,25 +7,39 @@ INDEX_HTML = """
         <title>Traffic Live Feed Dashboard</title>
         <style>
             body { 
-                background-color: #0b1121; color: #94a3b8; margin: 0; padding: 2rem; 
+                background: radial-gradient(circle at top, #1a2743 0%, #0b1121 46%, #070b16 100%);
+                color: #94a3b8;
+                margin: 0;
+                padding: 2rem;
+                min-height: 100vh;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
             .main-container {
-                max-width: 1200px; margin: 0 auto; background-color: #171e2e; 
-                padding: 20px; display: grid; grid-template-columns: 2fr 1fr; gap: 20px; 
-                border-radius: 6px; border: 1px solid #1e293b; position: relative;
+                max-width: 1360px;
+                margin: 0 auto;
+                background: linear-gradient(180deg, rgba(23, 30, 46, 0.96) 0%, rgba(15, 23, 42, 0.95) 100%);
+                padding: 22px;
+                display: grid;
+                grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+                gap: 22px;
+                border-radius: 12px;
+                border: 1px solid #23314a;
+                position: relative;
+                box-shadow: 0 20px 45px rgba(2, 6, 23, 0.45);
             }
 
-            .panel-title { color: #38bdf8; font-size: 1.1rem; font-weight: bold; margin-bottom: 15px; }
-            .video-section { padding-top: 5px; }
+            .panel-title { color: #38bdf8; font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; letter-spacing: 0.01em; }
+            .video-section { padding-top: 5px; min-width: 0; }
             .video-grid {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 12px;
             }
             .camera-card {
-                background-color: #27344a;
-                border-radius: 6px;
+                background: linear-gradient(180deg, #2a3953 0%, #24344d 100%);
+                border-radius: 10px;
+                border: 1px solid #3b4f6d;
+                box-shadow: 0 6px 20px rgba(2, 6, 23, 0.2);
                 padding: 10px;
             }
             .camera-title {
@@ -38,7 +52,8 @@ INDEX_HTML = """
                 background-color: #334155; 
                 width: 100%;
                 min-height: 240px;
-                border-radius: 4px; 
+                border-radius: 6px;
+                border: 1px solid #475569;
                 display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
             }
             .video-box img { width: 100%; height: auto; display: block; position: relative; z-index: 2; }
@@ -109,7 +124,15 @@ INDEX_HTML = """
             .right-boundary-slider input[type="range"] { accent-color: #f43f5e; }
             .lane-boundary-status { margin-top: 12px; font-size: 0.75rem; color: #94a3b8; min-height: 1.2em; text-align: right;}
 
-            .side-panels { display: flex; flex-direction: column; gap: 15px; }
+            .side-panels {
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+                min-width: 0;
+                position: sticky;
+                top: 22px;
+                align-self: start;
+            }
 
             /* ===== VIOLATIONS PANEL ===== */
             .violations-section {
@@ -316,10 +339,17 @@ INDEX_HTML = """
                 .lane-slider-grid { grid-template-columns: 1fr; }
                 .violations-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
                 .settings-button { top: 15px; right: 15px; padding: 8px 12px; }
+                .side-panels { position: static; top: auto; }
             }
 
-            .panel { background-color: #27344a; padding: 20px; border-radius: 6px; }
-            .panel h3 { color: #5bc2fb; margin-top: 0; margin-bottom: 10px; font-size: 1rem; }
+            .panel {
+                background: linear-gradient(180deg, #283955 0%, #22324b 100%);
+                border: 1px solid #3a4f6f;
+                box-shadow: 0 8px 20px rgba(2, 6, 23, 0.25);
+                padding: 20px;
+                border-radius: 10px;
+            }
+            .panel h3 { color: #7dd3fc; margin-top: 0; margin-bottom: 10px; font-size: 1rem; }
             .panel p { margin: 0; color: #cbd5e1; font-size: 0.95rem; }
             .dot { color: #4ade80; margin-right: 5px; font-size: 1.2rem; }
             .dt-box { margin-top: 12px; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; }
@@ -334,17 +364,17 @@ INDEX_HTML = """
             .dt-compare { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
             .dt-result { margin-top: 8px; font-size: 0.78rem; color: #93c5fd; line-height: 1.35; white-space: pre-line; }
 
-            .controls-row { display: flex; justify-content: space-between; gap:10px; margin-bottom: 15px; }
-            .btn-mode { padding: 10px; border-radius: 4px; width: 48%; cursor: pointer; border: none; font-weight: bold; transition: 0.2s;}
+            .controls-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 15px; }
+            .btn-mode { padding: 10px; border-radius: 6px; flex: 1; cursor: pointer; border: none; font-weight: bold; transition: 0.2s; }
             .active-auto { background-color: #4ade80; color: #064e3b; }
             .active-manual { background-color: #f87171; color: #450a0a; }
             .inactive { background-color: #334155; color: #94a3b8; border: 1px solid #475569; }
             .manual-actions { display: none; gap: 10px; justify-content: space-between; }
-            .btn-action { padding: 8px; border-radius: 4px; border: 1px solid #38bdf8; background: #0f172a; color: #38bdf8; cursor: pointer; width: 48%; font-weight:bold;}
+            .btn-action { padding: 8px; border-radius: 6px; border: 1px solid #38bdf8; background: #0f172a; color: #38bdf8; cursor: pointer; flex: 1; font-weight: bold; }
             .btn-action:hover { background: #38bdf8; color: #0f172a; }
 
-            .btn-detect-on  { background-color: #f87171; color: #450a0a; width: 100%; padding: 10px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
-            .btn-detect-off { background-color: #4ade80; color: #064e3b; width: 100%; padding: 10px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+            .btn-detect-on  { background-color: #f87171; color: #450a0a; width: 100%; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+            .btn-detect-off { background-color: #4ade80; color: #064e3b; width: 100%; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
 
             .feature-row {
                 display: flex;
@@ -543,6 +573,7 @@ INDEX_HTML = """
                         </tbody>
                     </table>
                 </div>
+            </div>
 
             <div class="side-panels">
                 <div class="panel">
