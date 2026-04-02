@@ -322,6 +322,17 @@ INDEX_HTML = """
             .panel h3 { color: #5bc2fb; margin-top: 0; margin-bottom: 10px; font-size: 1rem; }
             .panel p { margin: 0; color: #cbd5e1; font-size: 0.95rem; }
             .dot { color: #4ade80; margin-right: 5px; font-size: 1.2rem; }
+            .dt-box { margin-top: 12px; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; }
+            .dt-status { color: #cbd5e1; font-size: 0.85rem; margin-bottom: 8px; }
+            .dt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+            .dt-btn { padding: 8px 10px; border-radius: 4px; border: 1px solid #38bdf8; background: #0f172a; color: #38bdf8; cursor: pointer; font-weight: 600; font-size: 0.8rem; }
+            .dt-btn:hover { background: #38bdf8; color: #0f172a; }
+            .dt-btn.stop { border-color: #f87171; color: #fca5a5; }
+            .dt-btn.stop:hover { background: #f87171; color: #450a0a; }
+            .dt-btn.run { border-color: #4ade80; color: #86efac; }
+            .dt-btn.run:hover { background: #4ade80; color: #064e3b; }
+            .dt-compare { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
+            .dt-result { margin-top: 8px; font-size: 0.78rem; color: #93c5fd; line-height: 1.35; white-space: pre-line; }
 
             .controls-row { display: flex; justify-content: space-between; gap:10px; margin-bottom: 15px; }
             .btn-mode { padding: 10px; border-radius: 4px; width: 48%; cursor: pointer; border: none; font-weight: bold; transition: 0.2s;}
@@ -489,6 +500,7 @@ INDEX_HTML = """
                         </tbody>
                     </table>
                 </div>
+            </div>
 
             <div class="side-panels">
                 <div class="panel">
@@ -525,6 +537,24 @@ INDEX_HTML = """
                         <li>Emergency Priority: OFF</li>
                         <li>Pedestrian Extension: ON</li>
                     </ul>
+                    <div class="dt-box">
+                        <div class="dt-status" id="dt-status">Digital Twin: Idle</div>
+                        <div class="dt-actions">
+                            <button class="dt-btn run" onclick="startDigitalTwin()">⏺ Start Record</button>
+                            <button class="dt-btn stop" onclick="stopDigitalTwin()">⏹ Stop Record</button>
+                        </div>
+                        <div class="dt-compare">
+                            <div class="dt-actions">
+                                <button class="dt-btn" onclick="runWhatIf()">⚡ Run What-if</button>
+                                <button class="dt-btn" onclick="previewPlayback()">⏯ Playback</button>
+                            </div>
+                            <div class="dt-actions" style="margin-top:8px;">
+                                <button class="dt-btn" onclick="clearDigitalTwin()">🧹 Clear</button>
+                                <button class="dt-btn" onclick="refreshDigitalTwinSession()">🔄 Refresh</button>
+                            </div>
+                            <div class="dt-result" id="dt-result">No simulation yet.</div>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -827,6 +857,7 @@ INDEX_HTML = """
                         }
 
                         renderDetectionButton(data.detection);
+                        renderDigitalTwinStatus(data);
                     })
                     .catch(err => console.error(err));
             }, 1000);
@@ -838,6 +869,133 @@ INDEX_HTML = """
                 fetch('/toggle_detection', { method: 'POST' })
                     .then(r => r.json())
                     .then(data => renderDetectionButton(data.detection));
+            }
+
+            function renderDigitalTwinStatus(data) {
+                const statusEl = document.getElementById('dt-status');
+                if (!statusEl) return;
+                const recording = !!data.digital_twin_recording;
+                const frames = Number(data.digital_twin_frames || 0);
+                statusEl.textContent = recording
+                    ? `Digital Twin: Recording (${frames} frames)`
+                    : `Digital Twin: Idle (${frames} frames cached)`;
+                statusEl.style.color = recording ? '#86efac' : '#cbd5e1';
+            }
+
+            function startDigitalTwin() {
+                fetch('/digital_twin/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({max_frames: 1200})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.success) throw new Error(data.error || 'start failed');
+                    const s = data.session;
+                    document.getElementById('dt-status').textContent =
+                        `Digital Twin: Recording (${s.frames_count} frames)`;
+                    document.getElementById('dt-result').textContent = 'Recording started.';
+                })
+                .catch(err => {
+                    document.getElementById('dt-result').textContent = `Start failed: ${err.message}`;
+                });
+            }
+
+            function stopDigitalTwin() {
+                fetch('/digital_twin/stop', {method: 'POST'})
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.success) throw new Error(data.error || 'stop failed');
+                        const s = data.session;
+                        document.getElementById('dt-status').textContent =
+                            `Digital Twin: Idle (${s.frames_count} frames cached)`;
+                        document.getElementById('dt-result').textContent =
+                            `Recording stopped. Frames: ${s.frames_count}`;
+                    })
+                    .catch(err => {
+                        document.getElementById('dt-result').textContent = `Stop failed: ${err.message}`;
+                    });
+            }
+
+            function clearDigitalTwin() {
+                fetch('/digital_twin/clear', {method: 'POST'})
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.success) throw new Error(data.error || 'clear failed');
+                        document.getElementById('dt-status').textContent = 'Digital Twin: Idle (0 frames cached)';
+                        document.getElementById('dt-result').textContent = 'Recording cache cleared.';
+                    })
+                    .catch(err => {
+                        document.getElementById('dt-result').textContent = `Clear failed: ${err.message}`;
+                    });
+            }
+
+            function runWhatIf() {
+                fetch('/digital_twin/compare', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        strategies: ['baseline', 'pedestrian_first', 'vehicle_first', 'balanced_flow']
+                    })
+                })
+                .then(async r => {
+                    const data = await r.json();
+                    if (!r.ok || !data.success) throw new Error(data.error || 'compare failed');
+                    return data;
+                })
+                .then(data => {
+                    const winner = data.winner;
+                    const summary = data.strategies.slice(0, 4).map((s, idx) =>
+                        `${idx + 1}. ${s.strategy}  score=${s.demo_score}  delay=${s.total_delay_units}  switches=${s.switches}`
+                    ).join('\\n');
+                    document.getElementById('dt-result').textContent =
+                        `Winner: ${winner}\\nFrames used: ${data.frames_used}\\n${summary}`;
+                })
+                .catch(err => {
+                    document.getElementById('dt-result').textContent = `What-if failed: ${err.message}`;
+                });
+            }
+
+            function previewPlayback() {
+                fetch('/digital_twin/playback?limit=600', {cache: 'no-store'})
+                    .then(async r => {
+                        const data = await r.json();
+                        if (!r.ok || !data.success) throw new Error(data.error || 'playback failed');
+                        return data.playback;
+                    })
+                    .then(pb => {
+                        if (!pb.count) {
+                            document.getElementById('dt-result').textContent = 'Playback: no recorded points.';
+                            return;
+                        }
+                        const sec = (pb.duration_ms / 1000).toFixed(1);
+                        const first = pb.points[0];
+                        const last = pb.points[pb.points.length - 1];
+                        document.getElementById('dt-result').textContent =
+                            `Playback points: ${pb.count}\\nDuration: ${sec}s\\nStart: cars=${first.cars}, peds=${first.persons}\\nEnd: cars=${last.cars}, peds=${last.persons}\\nLast live state: ${last.light_state_live}`;
+                    })
+                    .catch(err => {
+                        document.getElementById('dt-result').textContent = `Playback failed: ${err.message}`;
+                    });
+            }
+
+            function refreshDigitalTwinSession() {
+                fetch('/digital_twin/session', {cache: 'no-store'})
+                    .then(async r => {
+                        const data = await r.json();
+                        if (!r.ok || !data.success) throw new Error(data.error || 'session failed');
+                        return data.session;
+                    })
+                    .then(s => {
+                        document.getElementById('dt-status').textContent = s.recording
+                            ? `Digital Twin: Recording (${s.frames_count} frames)`
+                            : `Digital Twin: Idle (${s.frames_count} frames cached)`;
+                        document.getElementById('dt-result').textContent =
+                            `Session refreshed.\\nFrames: ${s.frames_count}\\nDuration: ${(Number(s.duration_ms || 0) / 1000).toFixed(1)}s`;
+                    })
+                    .catch(err => {
+                        document.getElementById('dt-result').textContent = `Refresh failed: ${err.message}`;
+                    });
             }
 
             function setMode(mode) {

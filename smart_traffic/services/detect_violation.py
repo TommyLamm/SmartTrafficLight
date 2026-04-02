@@ -1,6 +1,7 @@
 import io
 import os
 import time
+from typing import Any
 
 import cv2
 import numpy as np
@@ -11,14 +12,23 @@ from ..models import car_model          # reuse existing YOLO — swap for plate
 from ..services.decode import decode_image
 from ..state import sys_state
 from ..models import plate_model
-from paddleocr import PaddleOCR
 import threading
 
+try:
+    from paddleocr import PaddleOCR
+except ModuleNotFoundError:
+    PaddleOCR = None
+
 _ocr_lock = threading.Lock()
-_ocr = None
+_ocr: Any | None = None
 
 def _get_ocr():
     global _ocr
+    if PaddleOCR is None:
+        raise RuntimeError(
+            "paddleocr is not installed. Install it with "
+            "'pip install paddleocr' to enable OCR in /capture_violation."
+        )
     if _ocr is None:
         with _ocr_lock:
             if _ocr is None:

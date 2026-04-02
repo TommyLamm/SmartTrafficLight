@@ -7,6 +7,7 @@ import smart_traffic.state as state
 from ..models import person_model
 from ..services.control import apply_person_control_logic
 from ..services.decode import decode_image
+from ..services.digital_twin import capture_snapshot
 from ..state import frame_condition_person, infer_lock, sys_state
 
 
@@ -75,6 +76,7 @@ def process_person_data(obfuscated_bytes):
     sys_state["persons"] = p_count
     sys_state["wheelchairs"] = w_count
     apply_person_control_logic(p_count, w_count)
+    capture_snapshot("person")
 
     return {
         "cars": sys_state["cars"],

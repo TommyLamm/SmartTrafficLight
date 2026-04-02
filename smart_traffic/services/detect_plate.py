@@ -14,10 +14,15 @@
 
 import time
 import threading
+from typing import Any
 
 import cv2
 import numpy as np
-from paddleocr import PaddleOCR
+
+try:
+    from paddleocr import PaddleOCR
+except ModuleNotFoundError:
+    PaddleOCR = None
 
 import smart_traffic.state as state
 
@@ -29,11 +34,16 @@ from ..state import infer_lock, sys_state
 
 # ── PaddleOCR singleton (initialised once, reused across requests) ────────────
 _ocr_lock = threading.Lock()
-_ocr: PaddleOCR | None = None
+_ocr: Any | None = None
 
 
-def _get_ocr() -> PaddleOCR:
+def _get_ocr():
     global _ocr
+    if PaddleOCR is None:
+        raise RuntimeError(
+            "paddleocr is not installed. Install it with "
+            "'pip install paddleocr' to enable /detect_plate OCR."
+        )
     if _ocr is None:
         with _ocr_lock:
             if _ocr is None:          # double-checked locking

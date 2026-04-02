@@ -21,6 +21,7 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 - [Project Structure](#project-structure)
 - [Installation & Setup](#installation--setup)
 - [API Endpoints](#api-endpoints)
+- [Digital Twin MVP](#digital-twin-mvp)
 - [Basic Data Flow](#basic-data-flow)
 
 ---
@@ -151,6 +152,72 @@ Once running:
 - `POST /manual_override` — Send a manual signal command
 - `POST /toggle_detection` — Toggle AI detection on/off
 - `POST /save_code` — Save and hot-reload `logic.py`
+
+### Digital Twin MVP
+
+- `POST /digital_twin/start` — Start recording live traffic snapshots (JSON accepts `max_frames`)
+- `POST /digital_twin/stop` — Stop recording
+- `POST /digital_twin/clear` — Clear recorded snapshots
+- `GET /digital_twin/session` — Current recording session status
+- `GET /digital_twin/frames` — Raw recorded snapshots (supports `?limit=200`)
+- `GET /digital_twin/playback` — Timeline-oriented playback payload (supports `?limit=600`)
+- `POST /digital_twin/compare` — What-if strategy comparison (`baseline`, `pedestrian_first`, `vehicle_first`, `balanced_flow`)
+
+---
+
+## Simulate Car Stream from a Real Road Video
+
+You can run the whole system without ESP32 hardware by replaying a prerecorded road video into the same API protocol used by the camera node.
+
+### 1) Start server
+
+```bash
+python app.py
+```
+
+### 2) Replay a video as `/detect_car`
+
+```bash
+python simulate_car_stream.py \
+  --video-path ./path/to/road_video.mp4 \
+  --server-url http://127.0.0.1:5000 \
+  --fps 8 \
+  --speed 1.0 \
+  --loop
+```
+
+### 3) (Recommended for full demo) Mirror frames to `/detect_person`
+
+`command/light_state` updates are triggered by the person pipeline in this architecture.  
+If you only send `/detect_car`, lane statistics update but signal commands may not change as often.
+
+```bash
+python simulate_car_stream.py \
+  --video-path ./path/to/road_video.mp4 \
+  --fps 8 \
+  --loop \
+  --mirror-to-person
+```
+
+### 4) Verify system is running
+
+- Dashboard (`http://127.0.0.1:5000`) updates in real time
+- `/stats` shows changing `cars`, `lane_counts`, `tidal_direction`
+- With `--mirror-to-person`, `command` and `light_state` should also evolve
+
+### 5) Run Digital Twin on simulated traffic
+
+```bash
+curl -X POST http://127.0.0.1:5000/digital_twin/start -H 'Content-Type: application/json' -d '{"max_frames":1200}'
+# wait a few seconds while simulator is streaming
+curl -X POST http://127.0.0.1:5000/digital_twin/stop
+curl -X POST http://127.0.0.1:5000/digital_twin/compare -H 'Content-Type: application/json' \
+  -d '{"strategies":["baseline","pedestrian_first","vehicle_first","balanced_flow"]}'
+```
+
+Notes:
+- `simulate_car_stream.py` uses the same XOR key (`MyIoTKey2026`) and `application/octet-stream` transport as ESP32.
+- Use `--resize-width` and lower `--fps` if your machine is overloaded.
 
 ---
 

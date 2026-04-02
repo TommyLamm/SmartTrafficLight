@@ -27,6 +27,8 @@ def stats():
     data["stream_person_online"] = state.is_person_stream_online()
     data["stream_plate_online"] = state.is_plate_stream_online()   # ← NEW
     data["lane_boundaries"] = state.get_lane_boundaries()
+    data["digital_twin_recording"] = bool(state.sys_state.get("digital_twin_recording", False))
+    data["digital_twin_frames"] = int(state.sys_state.get("digital_twin_frames", 0))
     # Avoid sending the full plates history in /stats (use /plates instead)
     data["plates_count"] = len(data.pop("plates", []))             # ← NEW
     return _json_no_cache(data)

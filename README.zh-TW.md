@@ -21,6 +21,7 @@
 - [專案結構](#專案結構)
 - [安裝與啟動](#安裝與啟動)
 - [API 端點](#api-端點)
+- [Digital Twin MVP](#digital-twin-mvp)
 - [基本資料流](#基本資料流)
 
 ---
@@ -151,6 +152,72 @@ python app.py
 - `POST /manual_override`：手動送出號誌指令
 - `POST /toggle_detection`：切換 AI 偵測開關
 - `POST /save_code`：儲存並熱重載 `logic.py`
+
+### Digital Twin MVP
+
+- `POST /digital_twin/start`：開始錄製即時交通快照（JSON 可帶 `max_frames`）
+- `POST /digital_twin/stop`：停止錄製
+- `POST /digital_twin/clear`：清空錄製快照
+- `GET /digital_twin/session`：查詢目前錄製狀態
+- `GET /digital_twin/frames`：取得原始快照資料（支援 `?limit=200`）
+- `GET /digital_twin/playback`：取得時間軸回放資料（支援 `?limit=600`）
+- `POST /digital_twin/compare`：What-if 策略比較（`baseline`、`pedestrian_first`、`vehicle_first`、`balanced_flow`）
+
+---
+
+## 用真實道路影片模擬 Car Stream
+
+你可以在沒有 ESP32 硬體的情況下，直接用預錄道路影片回放到伺服器，讓整個系統進入可展示運行狀態。
+
+### 1) 啟動伺服器
+
+```bash
+python app.py
+```
+
+### 2) 把影片回放成 `/detect_car` 輸入
+
+```bash
+python simulate_car_stream.py \
+  --video-path ./path/to/road_video.mp4 \
+  --server-url http://127.0.0.1:5000 \
+  --fps 8 \
+  --speed 1.0 \
+  --loop
+```
+
+### 3)（建議）同步鏡像到 `/detect_person`
+
+本專案架構中，`command/light_state` 主要由 person pipeline 更新。  
+如果只送 `/detect_car`，車流與車道統計會更新，但號誌指令變化可能不明顯。
+
+```bash
+python simulate_car_stream.py \
+  --video-path ./path/to/road_video.mp4 \
+  --fps 8 \
+  --loop \
+  --mirror-to-person
+```
+
+### 4) 驗證系統是否正常運行
+
+- Dashboard（`http://127.0.0.1:5000`）數值持續更新
+- `/stats` 的 `cars`、`lane_counts`、`tidal_direction` 會變化
+- 開啟 `--mirror-to-person` 時，`command` 與 `light_state` 也會持續更新
+
+### 5) 在模擬流量上跑 Digital Twin
+
+```bash
+curl -X POST http://127.0.0.1:5000/digital_twin/start -H 'Content-Type: application/json' -d '{"max_frames":1200}'
+# 讓模擬串流跑幾秒
+curl -X POST http://127.0.0.1:5000/digital_twin/stop
+curl -X POST http://127.0.0.1:5000/digital_twin/compare -H 'Content-Type: application/json' \
+  -d '{"strategies":["baseline","pedestrian_first","vehicle_first","balanced_flow"]}'
+```
+
+備註：
+- `simulate_car_stream.py` 使用與 ESP32 相同的 XOR key（`MyIoTKey2026`）與 `application/octet-stream` 傳輸格式。
+- 若推論負載偏高，建議降低 `--fps` 或設定 `--resize-width`。
 
 ---
 

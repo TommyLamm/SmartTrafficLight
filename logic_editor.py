@@ -22,10 +22,12 @@ import urllib.parse
 import urllib.error
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-PORT       = 5001
-HOST       = "0.0.0.0"
+PORT       = int(os.environ.get("SMARTTRAFFIC_EDITOR_PORT", "5001"))
+HOST       = os.environ.get("SMARTTRAFFIC_EDITOR_HOST", "0.0.0.0")
 LOGIC_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logic.py")
-FLASK_RELOAD = "http://127.0.0.1:5000/save_code"
+FLASK_APP_HOST = os.environ.get("SMARTTRAFFIC_APP_HOST", "127.0.0.1")
+FLASK_APP_PORT = int(os.environ.get("SMARTTRAFFIC_APP_PORT", "5000"))
+FLASK_RELOAD = f"http://{FLASK_APP_HOST}:{FLASK_APP_PORT}/save_code"
 
 
 def read_logic():
@@ -72,7 +74,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
 </div>
 
 <div id="error-bar"></div>
-<footer>Ctrl+S = Save &amp; Apply | Connected to Flask on port 5000</footer>
+  <footer>Ctrl+S = Save &amp; Apply | Connected to Flask on port PORT_PLACEHOLDER</footer>
 
 <script>
 const editor   = document.getElementById('editor');
@@ -180,6 +182,7 @@ class EditorHandler(BaseHTTPRequestHandler):
             code = read_logic()
             safe = code.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
             page = HTML_TEMPLATE.replace("PLACEHOLDER", safe)
+            page = page.replace("PORT_PLACEHOLDER", str(FLASK_APP_PORT))
             self.send_html(page)
 
         elif self.path == "/get_code":
