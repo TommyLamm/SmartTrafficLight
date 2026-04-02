@@ -13,6 +13,7 @@ from ..config import (
 from ..models import car_model
 from ..services.control import tick_emergency_phase
 from ..services.decode import decode_image
+from ..services.digital_twin import capture_snapshot
 from ..state import (
     frame_condition_car,
     infer_lock,
@@ -126,6 +127,7 @@ def process_car_data(obfuscated_bytes):
     tidal_direction = _compute_tidal_direction()
     sys_state["lane_counts"] = lane_counts
     sys_state["tidal_direction"] = tidal_direction
+    capture_snapshot("car")
 
     return {
         "cars": sys_state["cars"],

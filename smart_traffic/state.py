@@ -53,6 +53,10 @@ sys_state = {
     "wheelchair_priority_active": True,
     "emergency_phase": None,
     "emergency_phase_until": 0.0,
+    "digital_twin_recording": False,
+    "digital_twin_frames": 0,
+    "digital_twin_started_at_ms": None,
+    "digital_twin_last_frame_ts_ms": None,
 }
 
 # ── lane-boundary state (unchanged from original) ────────────────────────────
