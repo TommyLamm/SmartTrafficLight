@@ -7,7 +7,8 @@
 //    Serial1 (19/18) — Receive commands FROM ESP32
 //    Serial2 (17/16) — Send alerts    TO   ESP32 (e.g. violations)
 //
-//  Traffic LEDs  — Pins 22-27 (R/Y/G for Car + Pedestrian)
+//  Traffic LEDs  — Pins 22-27 (R/Y/G for Car #1 + Pedestrian)
+//                  Pins 28-30 (R/Y/G for Car #2 showcase — mirrors Car #1)
 //  RFID (SPI)    — SS=53, RST=49, MOSI=51, MISO=50, SCK=52
 //  OLED (I2C)    — SDA=20, SCL=21
 //  Pressure      — A0
@@ -40,12 +41,20 @@
 #endif
 
 // ─────────────────────────── PIN MAP ────────────────────────
+// Car #1 — main light (camera-controlled)
 #define CAR_RED_PIN     22
 #define CAR_GREEN_PIN   23
 #define CAR_YELLOW_PIN  24   // was BLUE — now wired to Yellow LED
+
+// Pedestrian light
 #define PED_RED_PIN     25
 #define PED_GREEN_PIN   26
 #define PED_YELLOW_PIN  27   // was BLUE — now wired to Yellow LED
+
+// Car #2 — showcase light (mirrors Car #1, no camera)
+#define CAR2_RED_PIN    28
+#define CAR2_GREEN_PIN  29
+#define CAR2_YELLOW_PIN 30
 
 #define RFID_SS_PIN     53
 #define RFID_RST_PIN    49
@@ -182,13 +191,18 @@ void setup() {
   Serial1.begin(115200);  // ESP32 → Mega (receive commands)
   Serial2.begin(115200);  // Mega → ESP32 (send violation alerts)
 
-  // Traffic LED pins
+  // Traffic LED pins — Car #1
   pinMode(CAR_RED_PIN,    OUTPUT);
   pinMode(CAR_GREEN_PIN,  OUTPUT);
   pinMode(CAR_YELLOW_PIN, OUTPUT);
+  // Pedestrian
   pinMode(PED_RED_PIN,    OUTPUT);
   pinMode(PED_GREEN_PIN,  OUTPUT);
   pinMode(PED_YELLOW_PIN, OUTPUT);
+  // Car #2 — showcase (mirrors Car #1)
+  pinMode(CAR2_RED_PIN,    OUTPUT);
+  pinMode(CAR2_GREEN_PIN,  OUTPUT);
+  pinMode(CAR2_YELLOW_PIN, OUTPUT);
 
   // RFID
 #if ENABLE_RFID
@@ -524,8 +538,10 @@ void runStateMachine() {
   switch (currentState) {
 
     // Car Green — vehicles move, pedestrians wait
+    // Car #2 cross-direction: RED
     case STATE_CAR_GREEN:
       setLights(0, 1, 0,  1, 0, 0);
+      setCar2Lights(1, 0, 0);
       if (failSafeMode && timeInState > FAILSAFE_CAR_GREEN) {
         pedGreenDuration = 15000;
         switchState(STATE_CAR_YELLOW);
@@ -533,37 +549,47 @@ void runStateMachine() {
       break;
 
     // Car Yellow — short warning before red
+    // Car #2 cross-direction: YELLOW (also transitioning)
     case STATE_CAR_YELLOW:
       setLights(0, 0, 1,  1, 0, 0);
+      setCar2Lights(0, 0, 1);
       if (timeInState > YELLOW_DURATION) switchState(STATE_PED_GREEN);
       break;
 
-    // Pedestrian Green
+    // Pedestrian Green — Car #1 red, Car #2 gets GREEN (cross traffic moves)
     case STATE_PED_GREEN:
       setLights(1, 0, 0,  0, 1, 0);
+      setCar2Lights(0, 1, 0);
       if (timeInState > pedGreenDuration) switchState(STATE_PED_BLINK);
       break;
 
     // Pedestrian Blinking (warning — clear the crossing)
+    // Car #2 cross-direction: YELLOW (warning, about to go red)
     case STATE_PED_BLINK:
       if ((timeInState / 500) % 2 == 0) setLights(1, 0, 0,  0, 1, 0);
       else                              setLights(1, 0, 0,  0, 0, 0);
+      setCar2Lights(0, 0, 1);
       if (timeInState > PED_BLINK_DURATION) switchState(STATE_PED_RED_WAIT);
       break;
 
     // All-red buffer before giving cars the green
+    // Car #2 cross-direction: RED (all-red safety gap)
     case STATE_PED_RED_WAIT:
       setLights(1, 0, 0,  1, 0, 0);
+      setCar2Lights(1, 0, 0);
       if (timeInState > PED_RED_WAIT_DUR) switchState(STATE_CAR_GREEN);
       break;
 
+    // Emergency states — Car #2 stays RED throughout
     case STATE_EMERGENCY_YELLOW:
       setLights(0, 0, 1,  1, 0, 0);   // car Yellow on, ped Red on
+      setCar2Lights(1, 0, 0);
       if (timeInState > EMERGENCY_YELLOW_DUR) switchState(STATE_EMERGENCY_ALL_RED);
       break;
 
     case STATE_EMERGENCY_ALL_RED:
       setLights(1, 0, 0,  1, 0, 0);
+      setCar2Lights(1, 0, 0);
       if (timeInState > EMERGENCY_ALL_RED_DUR) {
         emergencyStartTime = millis();
         switchState(STATE_EMERGENCY_RED_HOLD);
@@ -572,10 +598,11 @@ void runStateMachine() {
 
     case STATE_EMERGENCY_RED_HOLD:
       setLights(1, 0, 0,  1, 0, 0);
+      setCar2Lights(1, 0, 0);
       if ((timeInState / 300) % 2 == 0) {
-        analogWrite(CAR_YELLOW_PIN, brightness / 3);
+        analogWrite(CAR_YELLOW_PIN,  brightness / 3);
       } else {
-        analogWrite(CAR_YELLOW_PIN, 0);
+        analogWrite(CAR_YELLOW_PIN,  0);
       }
       break;
   }
@@ -759,13 +786,23 @@ void switchState(TrafficState newState) {
 
 // Sets traffic light LEDs — scaled by ambient brightness
 // Parameters: car (R,G,Y), pedestrian (R,G,Y)  — 0 = off, 1 = on
+// Car #2 is controlled separately via setCar2Lights().
 void setLights(int cr, int cg, int cy, int pr, int pg, int py) {
+  // Car #1
   analogWrite(CAR_RED_PIN,    cr ? brightness : 0);
   analogWrite(CAR_GREEN_PIN,  cg ? brightness : 0);
   analogWrite(CAR_YELLOW_PIN, cy ? brightness : 0);
+  // Pedestrian
   analogWrite(PED_RED_PIN,    pr ? brightness : 0);
   analogWrite(PED_GREEN_PIN,  pg ? brightness : 0);
   analogWrite(PED_YELLOW_PIN, py ? brightness : 0);
+}
+
+// Sets Car #2 (showcase / cross-road direction) LEDs independently.
+void setCar2Lights(int r, int g, int y) {
+  analogWrite(CAR2_RED_PIN,    r ? brightness : 0);
+  analogWrite(CAR2_GREEN_PIN,  g ? brightness : 0);
+  analogWrite(CAR2_YELLOW_PIN, y ? brightness : 0);
 }
 
 String laneLabel(TidalLane lane) {
