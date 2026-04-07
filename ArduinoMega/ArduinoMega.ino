@@ -7,7 +7,7 @@
 //    Serial1 (19/18) — Receive commands FROM ESP32
 //    Serial2 (17/16) — Send alerts    TO   ESP32 (e.g. violations)
 //
-//  Traffic LEDs  — Pins 22-27 (RGB for Car + Pedestrian)
+//  Traffic LEDs  — Pins 22-27 (R/Y/G for Car + Pedestrian)
 //  RFID (SPI)    — SS=53, RST=49, MOSI=51, MISO=50, SCK=52
 //  OLED (I2C)    — SDA=20, SCL=21
 //  Pressure      — A0
@@ -42,10 +42,10 @@
 // ─────────────────────────── PIN MAP ────────────────────────
 #define CAR_RED_PIN     22
 #define CAR_GREEN_PIN   23
-#define CAR_BLUE_PIN    24
+#define CAR_YELLOW_PIN  24   // was BLUE — now wired to Yellow LED
 #define PED_RED_PIN     25
 #define PED_GREEN_PIN   26
-#define PED_BLUE_PIN    27
+#define PED_YELLOW_PIN  27   // was BLUE — now wired to Yellow LED
 
 #define RFID_SS_PIN     53
 #define RFID_RST_PIN    49
@@ -183,12 +183,12 @@ void setup() {
   Serial2.begin(115200);  // Mega → ESP32 (send violation alerts)
 
   // Traffic LED pins
-  pinMode(CAR_RED_PIN,   OUTPUT);
-  pinMode(CAR_GREEN_PIN, OUTPUT);
-  pinMode(CAR_BLUE_PIN,  OUTPUT);
-  pinMode(PED_RED_PIN,   OUTPUT);
-  pinMode(PED_GREEN_PIN, OUTPUT);
-  pinMode(PED_BLUE_PIN,  OUTPUT);
+  pinMode(CAR_RED_PIN,    OUTPUT);
+  pinMode(CAR_GREEN_PIN,  OUTPUT);
+  pinMode(CAR_YELLOW_PIN, OUTPUT);
+  pinMode(PED_RED_PIN,    OUTPUT);
+  pinMode(PED_GREEN_PIN,  OUTPUT);
+  pinMode(PED_YELLOW_PIN, OUTPUT);
 
   // RFID
 #if ENABLE_RFID
@@ -558,7 +558,7 @@ void runStateMachine() {
       break;
 
     case STATE_EMERGENCY_YELLOW:
-      setLights(1, 1, 0,  1, 0, 0);
+      setLights(0, 0, 1,  1, 0, 0);   // car Yellow on, ped Red on
       if (timeInState > EMERGENCY_YELLOW_DUR) switchState(STATE_EMERGENCY_ALL_RED);
       break;
 
@@ -573,9 +573,9 @@ void runStateMachine() {
     case STATE_EMERGENCY_RED_HOLD:
       setLights(1, 0, 0,  1, 0, 0);
       if ((timeInState / 300) % 2 == 0) {
-        analogWrite(CAR_BLUE_PIN, brightness / 3);
+        analogWrite(CAR_YELLOW_PIN, brightness / 3);
       } else {
-        analogWrite(CAR_BLUE_PIN, 0);
+        analogWrite(CAR_YELLOW_PIN, 0);
       }
       break;
   }
@@ -758,14 +758,14 @@ void switchState(TrafficState newState) {
 }
 
 // Sets traffic light LEDs — scaled by ambient brightness
-// Parameters: car (R,G,B), pedestrian (R,G,B)  — 0 = off, 1 = on
-void setLights(int cr, int cg, int cb, int pr, int pg, int pb) {
-  analogWrite(CAR_RED_PIN,   cr ? brightness : 0);
-  analogWrite(CAR_GREEN_PIN, cg ? brightness : 0);
-  analogWrite(CAR_BLUE_PIN,  cb ? brightness : 0);
-  analogWrite(PED_RED_PIN,   pr ? brightness : 0);
-  analogWrite(PED_GREEN_PIN, pg ? brightness : 0);
-  analogWrite(PED_BLUE_PIN,  pb ? brightness : 0);
+// Parameters: car (R,G,Y), pedestrian (R,G,Y)  — 0 = off, 1 = on
+void setLights(int cr, int cg, int cy, int pr, int pg, int py) {
+  analogWrite(CAR_RED_PIN,    cr ? brightness : 0);
+  analogWrite(CAR_GREEN_PIN,  cg ? brightness : 0);
+  analogWrite(CAR_YELLOW_PIN, cy ? brightness : 0);
+  analogWrite(PED_RED_PIN,    pr ? brightness : 0);
+  analogWrite(PED_GREEN_PIN,  pg ? brightness : 0);
+  analogWrite(PED_YELLOW_PIN, py ? brightness : 0);
 }
 
 String laneLabel(TidalLane lane) {
