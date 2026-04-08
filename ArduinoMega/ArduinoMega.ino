@@ -290,23 +290,36 @@ void loop() {
 //    COUNT_xx          — update vehicle count (xx = number)
 //    KEEP              — heartbeat only
 // ============================================================
-void handleSerial1() {
-  if (Serial1.available() == 0) return;
+bool isRecognizedEsp32Command(const String& cmd) {
+  return cmd == "CAR_GREEN"
+      || cmd.startsWith("PED_GREEN_")
+      || cmd == "EMERGENCY_YELLOW"
+      || cmd == "EMERGENCY_ALL_RED"
+      || cmd == "EMERGENCY_RED"
+      || cmd == "EMERGENCY_CLEAR"
+      || cmd == "LANE_STRAIGHT"
+      || cmd == "LANE_LEFT"
+      || cmd == "LANE_RIGHT"
+      || cmd == "LANE_LEFT_STRAIGHT"
+      || cmd == "LANE_RIGHT_STRAIGHT"
+      || cmd == "LANE_LEFT_RIGHT"
+      || cmd == "LANE_ALL"
+      || cmd == "LANE_CLOSED"
+      || cmd == "LANE_EMERGENCY"
+      || cmd.startsWith("COUNT_")
+      || cmd == "KEEP";
+}
 
-  char c = Serial1.read();
-  if (c != '[') return;  // ignore noise outside brackets
-
-  String cmd = Serial1.readStringUntil(']');
-  cmd.trim();
-  if (cmd.length() == 0) return;
-
-  // Valid packet → reset heartbeat
-  lastHeartbeatTime = millis();
-  if (failSafeMode) {
-    Serial.print(">> [SYSTEM] First valid packet [");
-    Serial.print(cmd);
-    Serial.println("] — AI mode active.");
-    failSafeMode = false;
+void processEsp32Command(const String& cmd) {
+  if (isRecognizedEsp32Command(cmd)) {
+    // Only recognized control packets count as heartbeat.
+    lastHeartbeatTime = millis();
+    if (failSafeMode) {
+      Serial.print(">> [SYSTEM] First valid packet [");
+      Serial.print(cmd);
+      Serial.println("] — AI mode active.");
+      failSafeMode = false;
+    }
   }
 
   // ── Traffic light commands ─────────────────────────────
@@ -385,6 +398,52 @@ void handleSerial1() {
   else {
     Serial.print(">> [CMD] Unknown command: ");
     Serial.println(cmd);
+  }
+}
+
+void handleSerial1() {
+  static bool   inPacket = false;
+  static size_t packetLen = 0;
+  static char   packetBuf[96];
+
+  while (Serial1.available() > 0) {
+    char c = Serial1.read();
+
+    if (!inPacket) {
+      if (c == '[') {
+        inPacket = true;
+        packetLen = 0;
+      }
+      continue;
+    }
+
+    if (c == '[') {
+      // Start marker seen before packet close: resync to the latest frame.
+      packetLen = 0;
+      continue;
+    }
+
+    if (c == ']') {
+      if (packetLen > 0) {
+        packetBuf[packetLen] = '\0';
+        String cmd = String(packetBuf);
+        cmd.trim();
+        if (cmd.length() > 0) {
+          processEsp32Command(cmd);
+        }
+      }
+      inPacket = false;
+      packetLen = 0;
+      continue;
+    }
+
+    if (packetLen < sizeof(packetBuf) - 1) {
+      packetBuf[packetLen++] = c;
+    } else {
+      Serial.println(">> [CMD] Dropped overlong packet.");
+      inPacket = false;
+      packetLen = 0;
+    }
   }
 }
 

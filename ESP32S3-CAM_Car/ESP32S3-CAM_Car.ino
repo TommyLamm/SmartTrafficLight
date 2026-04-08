@@ -29,6 +29,29 @@ const String emergencyClearUrl   = "http://stl.gyke.net/clear_emergency";
 
 const char* XOR_KEY = "MyIoTKey2026";
 
+// Keep Mega UART clean: set to 1 only when you explicitly want debug logs
+// mixed into the Mega serial link.
+#ifndef ENABLE_UART_DEBUG
+#define ENABLE_UART_DEBUG 0
+#endif
+
+#if ENABLE_UART_DEBUG
+  #define DBG_PRINT(...)   Serial.print(__VA_ARGS__)
+  #define DBG_PRINTLN(...) Serial.println(__VA_ARGS__)
+  #define DBG_PRINTF(...)  Serial.printf(__VA_ARGS__)
+#else
+  #define DBG_PRINT(...)   do {} while (0)
+  #define DBG_PRINTLN(...) do {} while (0)
+  #define DBG_PRINTF(...)  do {} while (0)
+#endif
+
+void sendMegaPacket(const char* cmd) {
+  if (cmd == nullptr || cmd[0] == '\0') return;
+  Serial.print("[");
+  Serial.print(cmd);
+  Serial.println("]");
+}
+
 // ─────────────────────── CAMERA PINS ────────────────────────
 #define PWDN_GPIO_NUM   -1
 #define RESET_GPIO_NUM  -1
@@ -108,7 +131,7 @@ void setup() {
 
   esp_err_t err = esp_camera_init(&config);
   if (err != ESP_OK) {
-    Serial.printf("[CAM] Init failed: 0x%x\n", err);
+    DBG_PRINTF("DBG cam init failed: 0x%x\n", err);
     return;
   }
 
@@ -126,10 +149,9 @@ void setup() {
   WiFi.setSleep(false);
   while (WiFi.status() != WL_CONNECTED) {
     delay(500);
-    // dots have no [] so Mega ignores them
-    Serial.print(".");
+    DBG_PRINT(".");
   }
-  Serial.println("\nWi-Fi Connected");
+  DBG_PRINTLN("\nWi-Fi connected");
   wifiClient.setNoDelay(true);
 }
 
@@ -144,7 +166,7 @@ void loop() {
   // ── 2. VIOLATION QUEUE (highest priority) ────────────────
   if (violationQueue > 0) {
     violationQueue--;
-    Serial.printf("[VIOLATION] Capturing — %d still queued.\n", violationQueue);
+    DBG_PRINTF("DBG violation capture; queued=%d\n", violationQueue);
     captureViolation();
     return;   // skip normal detection this cycle
   }
@@ -184,24 +206,24 @@ void checkMegaSerial() {
         lastViolationTime = now;
         if (violationQueue < MAX_QUEUE) {
           violationQueue++;
-          Serial.printf("[ESP32] Violation queued — depth: %d\n", violationQueue);
+          DBG_PRINTF("DBG violation queued; depth=%d\n", violationQueue);
         } else {
-          Serial.println("[ESP32] Violation queue full — dropped.");
+          DBG_PRINTLN("DBG violation queue full; dropped");
         }
       } else {
-        Serial.println("[ESP32] Violation ignored — cooldown (same car).");
+        DBG_PRINTLN("DBG violation ignored; cooldown");
       }
     }
     else if (msg == "EMERGENCY_DETECTED") {
-      Serial.println("[ESP32] Emergency vehicle confirmed by Mega RFID.");
+      DBG_PRINTLN("DBG emergency detected by Mega RFID");
       triggerEmergencyWebhook();
     }
     else if (msg == "EMERGENCY_CLEARED") {
-      Serial.println("[ESP32] Emergency sequence cleared by Mega.");
+      DBG_PRINTLN("DBG emergency cleared by Mega");
       clearEmergencyWebhook();
     }
     else if (msg == "JAM_DETECTED") {
-      Serial.println("[ESP32] Traffic jam reported by Mega pressure sensor.");
+      DBG_PRINTLN("DBG traffic jam reported by Mega");
     }
   }
 }
@@ -213,7 +235,7 @@ void checkMegaSerial() {
 // ============================================================
 void captureViolation() {
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("[VIOLATION] No WiFi — frame dropped.");
+    DBG_PRINTLN("DBG violation dropped; no WiFi");
     return;
   }
 
@@ -234,7 +256,7 @@ void captureViolation() {
   // Grab the actual HD violation frame
   camera_fb_t *fb = esp_camera_fb_get();
   if (!fb) {
-    Serial.println("[VIOLATION] ERROR: failed to grab frame.");
+    DBG_PRINTLN("DBG violation capture failed; no frame");
     restoreNormalCameraSettings();
     return;
   }
@@ -250,9 +272,9 @@ void captureViolation() {
 
   int code = http.POST(fb->buf, fb->len);
   if (code > 0) {
-    Serial.printf("[VIOLATION] Upload OK — HTTP %d\n", code);
+    DBG_PRINTF("DBG violation upload ok; http=%d\n", code);
   } else {
-    Serial.printf("[VIOLATION] Upload FAILED — error %d\n", code);
+    DBG_PRINTF("DBG violation upload failed; err=%d\n", code);
     wifiClient.stop();
   }
 
@@ -293,25 +315,23 @@ void sendDetectionFrame() {
       int         sampleWindow   = doc["sample_window"]   | 0;
       JsonArray   laneCounts     = doc["lane_counts"].as<JsonArray>();
 
-      // Debug log — Mega ignores this because it has no []
-      Serial.print("{cars_total=");
-      Serial.print(carsTotal);
-      Serial.print(", lane_counts=(");
+      // Optional diagnostics (disabled by default to keep UART protocol clean)
+      DBG_PRINT("{cars_total=");
+      DBG_PRINT(carsTotal);
+      DBG_PRINT(", lane_counts=(");
       for (int i = 0; i < (int)laneCounts.size(); i++) {
-        if (i > 0) Serial.print(",");
-        Serial.print(laneCounts[i].as<int>());
+        if (i > 0) DBG_PRINT(",");
+        DBG_PRINT(laneCounts[i].as<int>());
       }
-      Serial.print("), tidal_direction=");
-      Serial.print(tidalDirection);
-      Serial.print(", sample_window=");
-      Serial.print(sampleWindow);
-      Serial.println("}");
+      DBG_PRINT("), tidal_direction=");
+      DBG_PRINT(tidalDirection);
+      DBG_PRINT(", sample_window=");
+      DBG_PRINT(sampleWindow);
+      DBG_PRINTLN("}");
 
       // Forward server command to Mega — Mega only acts on [] packets
       if (cmd) {
-        Serial.print("[");
-        Serial.print(cmd);
-        Serial.println("]");
+        sendMegaPacket(cmd);
       }
     }
   } else {
