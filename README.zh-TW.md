@@ -52,6 +52,7 @@
 
 - 從 `Serial1` 接收來自 ESP32 的指令（格式如 `[CAR_GREEN]`、`[PED_GREEN_10]`）
 - 控制車道與行人 RGB 燈的狀態切換
+- 採用 ESP32 -> Mega 的單向 UART 接線（Mega TX 不直連 ESP32 RX）
 - 若超過逾時未收到有效心跳/指令，進入 failsafe 循環（預設安全時序）
 
 ### 2) ESP32S3-CAM_Person（行人/輪椅節點）
@@ -69,7 +70,8 @@
 
 - 擷取相機影像並以同樣 XOR 方式混淆
 - 上傳到 `POST /detect_car`
-- 會把 Mega 的 emergency 開始/結束事件轉發到後端（`/trigger_emergency`、`/clear_emergency`），讓 Web 狀態與實體燈同步
+- 直接接壓力與 RFID 感測器（由 Mega 遷移）
+- 觸發違規擷取上傳（`/capture_violation`）與 emergency 起訖 webhook（`/trigger_emergency`、`/clear_emergency`）
 
 ---
 
@@ -234,7 +236,8 @@ curl -X POST http://127.0.0.1:5000/digital_twin/compare -H 'Content-Type: applic
 2. 伺服器解碼影像並執行 YOLO 推論，更新系統狀態。  
 3. 行人流程依 `logic.py` 計算 `command`。  
 4. Car 節點將目前 `command` 以序列格式送往 Arduino Mega。
-5. Arduino Mega 依指令切換實體號誌燈。
+5. Car 節點本地處理壓力/RFID 事件並同步後端 emergency/violation 狀態。
+6. Arduino Mega 依指令切換實體號誌燈。
 
 ---
 

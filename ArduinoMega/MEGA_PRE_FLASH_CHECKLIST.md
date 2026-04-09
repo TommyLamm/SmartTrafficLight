@@ -3,6 +3,9 @@
 此文件對應檔案：`ArduinoMega.ino`  
 目的：在**正式燒錄前**，確保設定、編譯與硬體條件都正確，避免上板後才發現問題。
 
+> 目前主架構已改為：壓力感測與 RFID 由 `ESP32S3-CAM_Car.ino` 處理，Mega 僅接收命令控制燈號。  
+> 本 checklist 主要適用於你要啟用 Mega 端「本地備援感測」（`ENABLE_RFID` / `ENABLE_PRESSURE_SENSOR`）時。
+
 
 ## 1) 先替換 RFID UID（必要）
 
@@ -36,19 +39,21 @@
 
 ## 3) 依硬體接線決定功能開關
 
-在 `ArduinoMega.ino` 檔頭確認這三個旗標：
+在 `ArduinoMega.ino` 檔頭確認以下旗標：
 
 ```cpp
-#define ENABLE_RFID 1
+#define ENABLE_RFID 0
 #define ENABLE_OLED 1
+#define ENABLE_PRESSURE_SENSOR 0
 #define ENFORCE_RFID_UID_GATE 1
 ```
 
 建議：
 
-- RFID 還沒接好：先設 `ENABLE_RFID 0`
+- 預設主架構（推薦）：`ENABLE_RFID 0`、`ENABLE_PRESSURE_SENSOR 0`
+- RFID 還沒接好：設 `ENABLE_RFID 0`
 - OLED 還沒接好：先設 `ENABLE_OLED 0`
-- 正式版要用 RFID：`ENABLE_RFID 1` 且 UID 必須是實值
+- 若要啟用 Mega 本地備援感測：`ENABLE_RFID 1` / `ENABLE_PRESSURE_SENSOR 1`，且 UID 必須是實值
 
 
 ## 4) 確認腳位與接線（本合併版本固定用 22-27）
@@ -96,4 +101,4 @@ C:\Path-to\arduino-cli.exe compile --fqbn arduino:avr:mega --build-property "bui
 2. 觀察啟動日誌有無異常。  
 3. 發送 `[KEEP]`、`[PED_GREEN_10]`、`[CAR_GREEN]` 確認狀態機可切換。  
 4. 若 RFID 開啟，用 emergency 卡驗證是否進入 `STATE_EMERGENCY`。  
-5. 若壓力感測器已接，確認紅燈壓下時會送出 `[VIOLATION]`。
+5. 若啟用 `ENABLE_PRESSURE_SENSOR 1`，確認紅燈壓下時序列埠會印出 violation log。

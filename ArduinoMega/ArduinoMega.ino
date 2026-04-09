@@ -1,28 +1,37 @@
 // ============================================================
 //  Arduino Mega 2560 — Unified Traffic Control System
-//  Week 10 Integration: ESP32 Camera + Pressure Sensor + RFID
+//  One-way UART architecture (ESP32 handles pressure + RFID)
 // ------------------------------------------------------------
+//  SAFE WIRING:
+//    ESP32 TX0  ──> Mega RX1 (pin 19)
+//    Mega TX*   ──X  NOT connected to ESP32 RX (avoid 5V -> 3.3V risk)
+//    ESP32 GND  <──> Mega GND
+//
 //  Serial Ports
 //    Serial  (USB)   — Debug monitor
 //    Serial1 (19/18) — Receive commands FROM ESP32
-//    Serial2 (17/16) — Send alerts    TO   ESP32 (e.g. violations)
 //
 //  Traffic LEDs  — Pins 22-27 (R/Y/G for Car #1 + Pedestrian)
 //                  Pins 28-30 (R/Y/G for Car #2 showcase — mirrors Car #1)
-//  RFID (SPI)    — SS=53, RST=49, MOSI=51, MISO=50, SCK=52
 //  OLED (I2C)    — SDA=20, SCL=21
-//  Pressure      — A0
-//  Illuminance   — A1
+//  Illuminance   — A1 (local brightness control)
+//
+//  NOTE:
+//    Pressure + RFID sensing has been migrated to ESP32S3-CAM_Car.
 // ============================================================
 
 // ───────────────────── FEATURE FLAGS ────────────────────────
 // 1 = enabled, 0 = disabled
 #ifndef ENABLE_RFID
-#define ENABLE_RFID 1
+#define ENABLE_RFID 0
 #endif
 
 #ifndef ENABLE_OLED
 #define ENABLE_OLED 1
+#endif
+
+#ifndef ENABLE_PRESSURE_SENSOR
+#define ENABLE_PRESSURE_SENSOR 0
 #endif
 
 #ifndef ENFORCE_RFID_UID_GATE
@@ -56,14 +65,14 @@
 #define CAR2_GREEN_PIN  29
 #define CAR2_YELLOW_PIN 30
 
+// Legacy sensor pins (disabled by default; kept for optional local fallback)
 #define RFID_SS_PIN     53
 #define RFID_RST_PIN    49
-
 #define PRESSURE_PIN    A0
 #define ILLUMINANCE_PIN A1
 
 // ─────────────────────────── CONSTANTS ──────────────────────
-// Pressure sensor
+// Pressure sensor (legacy local path, disabled by default)
 #define PRESSURE_THRESHOLD         60       // ADC counts
 #define JAM_DURATION_THRESHOLD     60000000UL  // 60 s in µs
 #define COOLING_PERIOD_DURATION   300000000UL  // 300 s in µs
@@ -189,7 +198,6 @@ unsigned long lastLogTime = 0;
 void setup() {
   Serial.begin(115200);   // USB debug
   Serial1.begin(115200);  // ESP32 → Mega (receive commands)
-  Serial2.begin(115200);  // Mega → ESP32 (send violation alerts)
 
   // Traffic LED pins — Car #1
   pinMode(CAR_RED_PIN,    OUTPUT);
@@ -208,9 +216,9 @@ void setup() {
 #if ENABLE_RFID
   SPI.begin();
   rfid.PCD_Init();
-  Serial.println("[RFID] Module initialised.");
+  Serial.println("[RFID] Legacy local RFID path enabled.");
 #else
-  Serial.println("[RFID] Disabled (ENABLE_RFID=0).");
+  Serial.println("[RFID] Disabled (migrated to ESP32).");
 #endif
 
   // OLED
@@ -228,7 +236,7 @@ void setup() {
 
   switchState(STATE_CAR_GREEN);
   Serial.println("=== STL Mega Integrated System Started ===");
-  Serial.println("    Inputs: ESP32 Serial | Pressure A0 | RFID SPI");
+  Serial.println("    Inputs: ESP32 Serial commands | Illuminance A1");
 }
 
 // ============================================================
@@ -246,32 +254,37 @@ void loop() {
     failSafeMode = true;
   }
 
-  // ── 3. READ SENSORS ─────────────────────────────────────
+  // ── 3. OPTIONAL LOCAL SENSORS (disabled by default) ─────
+#if ENABLE_PRESSURE_SENSOR
   readPressureSensor();
+#endif
 
-  // ── 4. CHECK RFID FOR EMERGENCY VEHICLES ────────────────
+#if ENABLE_RFID
   checkRFID();
+#endif
 
-  // ── 5. TRAFFIC LIGHT STATE MACHINE ──────────────────────
+  // ── 4. TRAFFIC LIGHT STATE MACHINE ──────────────────────
   runStateMachine();
 
-  // ── 6. UPDATE OLED TIDAL LANE DISPLAY ───────────────────
+  // ── 5. UPDATE OLED TIDAL LANE DISPLAY ───────────────────
   // Refresh only when needed (flag set by command handler)
   // updateOLED() is called from handleSerial1() on lane change
 
-  // ── 7. HANDLE RED-LIGHT VIOLATION ───────────────────────
+  // ── 6. HANDLE RED-LIGHT VIOLATION (legacy local path) ───
+#if ENABLE_PRESSURE_SENSOR
   if (redLightViolation) {
     triggerViolationAlert();
     redLightViolation = false;
   }
 
-  // ── 8. CANCEL VIOLATION FLAG ONCE LIGHT TURNS GREEN ─────
+  // ── 7. CANCEL VIOLATION FLAG ONCE LIGHT TURNS GREEN ─────
   bool carGreen = (currentState == STATE_CAR_GREEN);
   if (carGreen) {
     redLightViolation = false; // clear stale flag when light is green
   }
+#endif
 
-  // ── 9. PERIODIC STATUS LOG ──────────────────────────────
+  // ── 8. PERIODIC STATUS LOG ──────────────────────────────
   unsigned long now = millis();
   if (now - lastLogTime >= 1000) {
     lastLogTime = now;
@@ -368,7 +381,6 @@ void processEsp32Command(const String& cmd) {
     emergencyActive = false;
     emergencyStartTime = 0;
     switchState(STATE_PED_RED_WAIT);
-    Serial2.println("[EMERGENCY_CLEARED]");
   }
 
   // ── Tidal lane commands ────────────────────────────────
@@ -449,6 +461,7 @@ void handleSerial1() {
 
 // ============================================================
 //  SECTION B — PRESSURE SENSOR
+//  Legacy local path (ENABLE_PRESSURE_SENSOR=1).
 //  Detects vehicle at stop-line.
 //  - Red-light violation: pressure detected while car light is red
 //  - Traffic jam: vehicle held > JAM_DURATION_THRESHOLD µs AND
@@ -499,8 +512,7 @@ void detect_jam(){
         jam            = true;
         lastJamTimeUs  = micros();
         coolingPeriod  = true;
-        Serial.println("!! [JAM] Traffic jam detected — notifying ESP32.");
-        Serial2.println("[JAM_DETECTED]");
+        Serial.println("!! [JAM] Traffic jam detected (local log only).");
       }
   else if (!coolingPeriod) {
     jam = false;
@@ -527,6 +539,7 @@ void BrightnessControl(){
 
 // ============================================================
 //  SECTION D — RFID EMERGENCY VEHICLE DETECTION
+//  Legacy local path (ENABLE_RFID=1).
 //  Reads MFRC522. If a known emergency UID is detected,
 //  the system enters emergency 3-phase sequence:
 //  EMERGENCY_YELLOW -> EMERGENCY_ALL_RED -> EMERGENCY_RED_HOLD.
@@ -541,7 +554,6 @@ void checkRFID() {
       emergencyActive = false;
       emergencyStartTime = 0;
       Serial.println("[RFID] Emergency period ended — resuming normal cycle.");
-      Serial2.println("[EMERGENCY_CLEARED]");
       switchState(STATE_PED_RED_WAIT);
     }
     return;
@@ -566,7 +578,6 @@ void checkRFID() {
 
   if (isEmergency) {
     Serial.println("[RFID] *** EMERGENCY VEHICLE DETECTED — Override! ***");
-    Serial2.println("[EMERGENCY_DETECTED]");  // notify ESP32
     emergencyActive    = true;
     emergencyStartTime = 0;
     switchState(STATE_EMERGENCY_YELLOW);
@@ -668,13 +679,12 @@ void runStateMachine() {
 }
 
 // ============================================================
-//  SECTION F — RED-LIGHT VIOLATION ALERT
-//  Sends a [VIOLATION] packet to ESP32 via Serial2 so that
-//  the ESP32 can trigger its camera to capture the plate.
+//  SECTION F — RED-LIGHT VIOLATION ALERT (legacy local path)
+//  Mega no longer uplinks events to ESP32; this remains a log hook
+//  when ENABLE_PRESSURE_SENSOR is enabled for local diagnostics.
 // ============================================================
 void triggerViolationAlert() {
-  Serial2.println("[VIOLATION]");   // ESP32 listens for this on its UART
-  Serial.println("[ALERT] Violation packet sent to ESP32 camera.");
+  Serial.println("[ALERT] Local red-light violation detected.");
 }
 
 // ============================================================

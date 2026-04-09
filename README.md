@@ -52,6 +52,7 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 
 - Receives commands from the ESP32 via `Serial1` (e.g. `[CAR_GREEN]`, `[PED_GREEN_10]`)
 - Controls state transitions for vehicle and pedestrian RGB lights
+- Uses one-way UART wiring from ESP32 to Mega (do not connect Mega TX directly to ESP32 RX)
 - Enters a failsafe loop (default safe timing sequence) if no valid heartbeat/command is received within the timeout period
 
 ### 2) ESP32S3-CAM_Person (Pedestrian/Wheelchair Node)
@@ -69,7 +70,8 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 
 - Captures camera frames and obfuscates them using the same XOR method
 - Uploads frames to `POST /detect_car`
-- Forwards emergency start/clear events from Mega to backend (`/trigger_emergency`, `/clear_emergency`) to keep web state in sync with hardware phases
+- Reads pressure + RFID sensors locally (migrated from Mega) for violation/emergency events
+- Triggers violation capture uploads (`/capture_violation`) and emergency start/clear webhooks (`/trigger_emergency`, `/clear_emergency`)
 
 ---
 
@@ -234,7 +236,8 @@ Notes:
 2. The server decodes the frames, runs YOLO inference, and updates the system state.
 3. The pedestrian pipeline computes a `command` according to `logic.py`.
 4. The Car node forwards the current `command` in serial format to the Arduino Mega.
-5. The Arduino Mega switches the physical signal lights according to the command.
+5. The Car node handles local pressure/RFID sensor events and updates backend emergency/violation paths.
+6. The Arduino Mega switches the physical signal lights according to the command.
 
 ---
 
