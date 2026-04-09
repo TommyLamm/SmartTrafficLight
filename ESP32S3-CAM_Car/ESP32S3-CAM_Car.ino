@@ -100,13 +100,17 @@ void sendMegaPacket(const char* cmd) {
 const int FRAME_INTERVAL     = 200;   // ms between normal detections
 const int VIOLATION_COOLDOWN = 2000;  // ms — debounce same trigger
 const int MAX_QUEUE          = 5;     // violation capture safety cap
+const unsigned long MEGA_FAILSAFE_TIMEOUT_MS = 5000UL;  // keep in sync with Mega FAILSAFE_TIMEOUT
 
 const int PRESSURE_THRESHOLD         = 60;          // 8-bit ADC counts (0-255)
 const unsigned long JAM_DURATION_US  = 60000000UL;  // 60 s
 const unsigned long JAM_COOLING_US   = 300000000UL; // 300 s
 const int CAR_COUNT_JAM_THRESHOLD    = 10;
 
-const unsigned long EMERGENCY_HOLD_MS       = 15000UL;
+const unsigned long EMERGENCY_YELLOW_MS      = 3000UL;
+const unsigned long EMERGENCY_ALL_RED_MS     = 5000UL;
+const unsigned long EMERGENCY_RED_HOLD_MS    = 15000UL;
+const unsigned long LOCAL_EMERGENCY_TOTAL_MS = EMERGENCY_YELLOW_MS + EMERGENCY_ALL_RED_MS + EMERGENCY_RED_HOLD_MS;
 const unsigned long EMERGENCY_WEBHOOK_GAP_MS = 2000UL;
 
 // ─────────────────────── RFID UIDS ──────────────────────────
@@ -139,6 +143,7 @@ volatile int violationQueue = 0;
 int carsOnRoad = 0;
 
 bool assumeCarRed = false;  // inferred from latest non-KEEP command sent to Mega
+unsigned long lastControlPacketMs = 0;
 
 bool pressureOn = false;
 unsigned long pressureStartUs = 0;
@@ -313,6 +318,11 @@ void detectJamFromPressure() {
   }
 }
 
+bool hasFreshLightStateAssumption() {
+  return lastControlPacketMs > 0
+      && (millis() - lastControlPacketMs) <= MEGA_FAILSAFE_TIMEOUT_MS;
+}
+
 void pollPressureSensor() {
 #if !ENABLE_PRESSURE_SENSOR
   return;
@@ -324,7 +334,7 @@ void pollPressureSensor() {
     if (!pressureOn) {
       pressureOn = true;
       pressureStartUs = micros();
-      if (assumeCarRed) {
+      if (assumeCarRed && hasFreshLightStateAssumption()) {
         queueViolationCapture("pressure/red");
       }
     } else {
@@ -375,11 +385,12 @@ void pollRfidSensor() {
   bool isEmergency = isKnownEmergencyTag();
   if (isEmergency) {
     if (!localEmergencyActive) {
+      sendMegaPacket("EMERGENCY_YELLOW");
       DBG_PRINTLN("DBG RFID emergency detected.");
       triggerEmergencyWebhook();
+      localEmergencyActive = true;
+      localEmergencyStartMs = millis();
     }
-    localEmergencyActive = true;
-    localEmergencyStartMs = millis();
   } else {
     DBG_PRINT("DBG unknown RFID tag: ");
     for (byte i = 0; i < rfid.uid.size; i++) {
@@ -397,9 +408,10 @@ void pollRfidSensor() {
 
 void refreshEmergencyHold() {
   if (!localEmergencyActive) return;
-  if (millis() - localEmergencyStartMs <= EMERGENCY_HOLD_MS) return;
+  if (millis() - localEmergencyStartMs <= LOCAL_EMERGENCY_TOTAL_MS) return;
 
   localEmergencyActive = false;
+  sendMegaPacket("EMERGENCY_CLEAR");
   DBG_PRINTLN("DBG emergency hold elapsed; clearing webhook.");
   clearEmergencyWebhook();
 }
@@ -503,6 +515,7 @@ void sendDetectionFrame() {
       DBG_PRINTLN("}");
 
       if (cmd) {
+        lastControlPacketMs = millis();
         sendMegaPacket(cmd);
       }
     }

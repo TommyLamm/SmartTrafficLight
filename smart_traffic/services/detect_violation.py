@@ -1,6 +1,7 @@
 import io
 import os
 import time
+import threading
 
 import cv2
 import numpy as np
@@ -9,16 +10,22 @@ from PIL import Image
 from ..config import XOR_KEY
 from ..models import car_model          # reuse existing YOLO — swap for plate model later
 from ..services.decode import decode_image
-from ..state import sys_state
+from ..state import infer_lock, sys_state
 from ..models import plate_model
-from paddleocr import PaddleOCR
-import threading
+try:
+    from paddleocr import PaddleOCR
+    _PADDLEOCR_IMPORT_ERROR = None
+except Exception as exc:
+    PaddleOCR = object
+    _PADDLEOCR_IMPORT_ERROR = exc
 
 _ocr_lock = threading.Lock()
 _ocr = None
 
 def _get_ocr():
     global _ocr
+    if _PADDLEOCR_IMPORT_ERROR is not None:
+        raise RuntimeError("PaddleOCR is unavailable") from _PADDLEOCR_IMPORT_ERROR
     if _ocr is None:
         with _ocr_lock:
             if _ocr is None:
@@ -34,9 +41,10 @@ def process_violation_data(obfuscated_bytes):
     image = decode_image(obfuscated_bytes)
 
     # Run plate model on the same frame
-    plate_results = plate_model.predict(
-        source=image, imgsz=640, conf=0.25, save=False
-    )
+    with infer_lock:
+        plate_results = plate_model.predict(
+            source=image, imgsz=640, conf=0.25, save=False
+        )
 
     plate_text, plate_conf = "N/A", 0.0
     if plate_results[0].boxes is not None:
@@ -62,14 +70,15 @@ def process_violation_data(obfuscated_bytes):
                     break  # take the first/best plate
 
     # Run detection on HD frame (reuse car model until plate model is ready)
-    results = car_model.predict(
-        source=image,
-        imgsz=1280,          # full HD resolution
-        classes=[2, 3, 5, 7],
-        save=False,
-        conf=0.30,
-        agnostic_nms=True,
-    )
+    with infer_lock:
+        results = car_model.predict(
+            source=image,
+            imgsz=1280,          # full HD resolution
+            classes=[2, 3, 5, 7],
+            save=False,
+            conf=0.30,
+            agnostic_nms=True,
+        )
 
     detected_count = sum(
         int(len(r.boxes.cls)) for r in results if r.boxes is not None
@@ -83,7 +92,8 @@ def process_violation_data(obfuscated_bytes):
     annotated = results[0].plot()
     filename = f"violation_{timestamp}.jpg"
     filepath = os.path.join(save_dir, filename)
-    cv2.imwrite(filepath, annotated)
+    if not cv2.imwrite(filepath, annotated):
+        raise OSError(f"Failed to write violation image: {filepath}")
 
     # Log into sys_state so /stats and the UI can see it
     record = {

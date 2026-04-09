@@ -17,7 +17,12 @@ import threading
 
 import cv2
 import numpy as np
-from paddleocr import PaddleOCR
+try:
+    from paddleocr import PaddleOCR
+    _PADDLEOCR_IMPORT_ERROR = None
+except Exception as exc:
+    PaddleOCR = object
+    _PADDLEOCR_IMPORT_ERROR = exc
 
 import smart_traffic.state as state
 
@@ -34,6 +39,8 @@ _ocr: PaddleOCR | None = None
 
 def _get_ocr() -> PaddleOCR:
     global _ocr
+    if _PADDLEOCR_IMPORT_ERROR is not None:
+        raise RuntimeError("PaddleOCR is unavailable") from _PADDLEOCR_IMPORT_ERROR
     if _ocr is None:
         with _ocr_lock:
             if _ocr is None:          # double-checked locking
@@ -110,9 +117,10 @@ def process_plate_data(obfuscated_bytes: bytes) -> dict:
     # ── Push annotated frame for /stream_plate ─────────────────────────────────
     ret, buf = cv2.imencode(".jpg", annotated)
     if ret:
-        with state.frame_condition_car:          # reuse existing condition or use dedicated one
+        with state.frame_condition_plate:
             state.latest_frame_plate = buf.tobytes()
             state.latest_frame_ts_plate = time.time()
+            state.frame_condition_plate.notify_all()
 
     # ── OCR each detected plate ───────────────────────────────────────────────
     ocr = _get_ocr()
