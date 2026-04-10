@@ -199,19 +199,28 @@ void setup() {
   config.grab_mode     = CAMERA_GRAB_WHEN_EMPTY;
   config.fb_location   = CAMERA_FB_IN_PSRAM;
 
-  if (psramFound()) {
+  bool hasPsram = psramFound();
+  if (hasPsram) {
     config.frame_size   = FRAMESIZE_VGA;
     config.jpeg_quality = 12;
     config.fb_count     = 2;
     config.grab_mode    = CAMERA_GRAB_LATEST;
   } else {
-    config.frame_size   = FRAMESIZE_VGA;
-    config.jpeg_quality = 12;
+    // Keep DRAM usage low when PSRAM is unavailable.
+    config.frame_size   = FRAMESIZE_QVGA;
+    config.jpeg_quality = 15;
     config.fb_count     = 1;
     config.fb_location  = CAMERA_FB_IN_DRAM;
+    config.grab_mode    = CAMERA_GRAB_WHEN_EMPTY;
   }
 
   esp_err_t err = esp_camera_init(&config);
+  if (err != ESP_OK && !hasPsram) {
+    DBG_PRINTF("DBG cam init retry QQVGA (no PSRAM), err=0x%x\n", err);
+    config.frame_size   = FRAMESIZE_QQVGA;
+    config.jpeg_quality = 20;
+    err = esp_camera_init(&config);
+  }
   if (err != ESP_OK) {
     DBG_PRINTF("DBG cam init failed: 0x%x\n", err);
     return;
