@@ -7,7 +7,7 @@
 //    ESP32 GND  <──> Mega GND
 //
 //  SENSOR WIRING (migrated from Mega to ESP32):
-//    Pressure sensor (analog out) -> PRESSURE_PIN (GPIO14 by default), 3V3, GND
+//    Pressure sensor (analog out) -> PRESSURE_PIN (GPIO35 by default), 3V3, GND
 //    RFID MFRC522 (SPI)           -> SS/RST/SCK/MISO/MOSI pins below, 3V3, GND
 //
 //  Runtime flow:
@@ -87,10 +87,10 @@ void sendMegaPacket(const char* cmd) {
 #define PCLK_GPIO_NUM   13
 
 // ─────────────────────── SENSOR PINS ────────────────────────
-#define PRESSURE_PIN 14
+#define PRESSURE_PIN 35
 
 // Adjust these defaults to your exact ESP32-S3-CAM breakout pinout.
-#define RFID_SS_PIN   3
+#define RFID_SS_PIN  36
 #define RFID_RST_PIN 47
 #define RFID_SCK_PIN 21
 #define RFID_MISO_PIN 2
