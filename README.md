@@ -17,7 +17,7 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 ## Table of Contents
 
 - [System Overview](#system-overview)
-- [Hardware Roles (Mega & ESP32)](#hardware-roles-mega--esp32)
+- [Hardware Roles (Mega, ESP32-CAM, ESP8266)](#hardware-roles-mega-esp32-cam-esp8266)
 - [Project Structure](#project-structure)
 - [Installation & Setup](#installation--setup)
 - [API Endpoints](#api-endpoints)
@@ -44,16 +44,17 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 
 ---
 
-## Hardware Roles (Mega & ESP32)
+## Hardware Roles (Mega, ESP32-CAM, ESP8266)
 
 ### 1) Arduino Mega (Signal Controller)
 
 `ArduinoMega/ArduinoMega.ino` manages the physical signal light state machine and failsafe:
 
-- Receives commands from the ESP32 via `Serial1` (e.g. `[CAR_GREEN]`, `[PED_GREEN_10]`)
+- Polls `GET /stats` through an ESP8266 AT module (`Serial2`, pins 16/17) and consumes `command`
 - Controls state transitions for vehicle and pedestrian RGB lights
-- Uses one-way UART wiring from ESP32 to Mega (do not connect Mega TX directly to ESP32 RX)
-- Enters a failsafe loop (default safe timing sequence) if no valid heartbeat/command is received within the timeout period
+- Reads local sensors on Mega: pressure (`A0`), RFID (SPI, `SS=53`, `RST=49`), illuminance (`A1`)
+- Runs emergency/failsafe logic locally (including emergency-clear translation when server command returns to non-emergency)
+- Enters a failsafe loop if no valid server heartbeat/command is received within timeout
 
 ### 2) ESP32S3-CAM_Person (Pedestrian/Wheelchair Node)
 
@@ -61,8 +62,7 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 
 - Captures camera frames and obfuscates them via XOR (`MyIoTKey2026`)
 - Uploads frames to `POST /detect_person`
-- Parses the `command` field from the server's JSON response
-- Wraps the command as `[COMMAND]` and sends it to the Arduino Mega over `Serial`
+- Does not control Mega directly over UART in the current architecture
 
 ### 3) ESP32S3-CAM_Car (Vehicle Node)
 
@@ -70,8 +70,15 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 
 - Captures camera frames and obfuscates them using the same XOR method
 - Uploads frames to `POST /detect_car`
-- Reads pressure + RFID sensors locally (migrated from Mega) for violation/emergency events
-- Triggers violation capture uploads (`/capture_violation`) and emergency start/clear webhooks (`/trigger_emergency`, `/clear_emergency`)
+- Triggers violation capture uploads (`/capture_violation`)
+- In current firmware, pressure/RFID local paths are disabled on this node (moved back to Mega)
+- Does not forward control commands to Mega over UART
+
+### 4) ESP8266 (AT WiFi Bridge for Mega)
+
+- Runs stock AT firmware (no project-specific firmware flashing required)
+- Connected to Mega `Serial2` and used via `WiFiEsp`
+- Provides Mega's network path to poll backend `/stats` and keep command heartbeat alive
 
 ---
 
@@ -87,6 +94,9 @@ SmartTrafficLight/
 ├── person_wheelchair_personWheelchairV2.pt
 ├── ArduinoMega/
 │   └── ArduinoMega.ino
+├── ESP8266.ino
+├── ESP8266_WiFi_Bridge/
+│   └── ESP8266_WiFi_Bridge.ino
 ├── ESP32S3-CAM_Car/
 │   └── ESP32S3-CAM_Car.ino
 ├── ESP32S3-CAM_Person/
@@ -232,12 +242,12 @@ Notes:
 
 ## Basic Data Flow
 
-1. The ESP32-CAM captures frames, obfuscates them via XOR, and uploads them to the Flask API.
-2. The server decodes the frames, runs YOLO inference, and updates the system state.
-3. The pedestrian pipeline computes a `command` according to `logic.py`.
-4. The Car node forwards the current `command` in serial format to the Arduino Mega.
-5. The Car node handles local pressure/RFID sensor events and updates backend emergency/violation paths.
-6. The Arduino Mega switches the physical signal lights according to the command.
+1. ESP32-CAM nodes (car/person) capture frames, obfuscate them via XOR, and upload to Flask APIs.
+2. The server decodes frames, runs inference, and updates global traffic state (`command`, counts, lane data).
+3. Arduino Mega polls backend `/stats` through ESP8266 (AT + `WiFiEsp`) to fetch latest `command`.
+4. Mega parses `command` plus car count (`cars_total`, fallback `cars`) and updates local FSM context.
+5. Mega executes physical signal switching and local sensor logic (RFID/pressure/illuminance/OLED).
+6. If backend command flow is lost, Mega enters failsafe timing sequence.
 
 ---
 

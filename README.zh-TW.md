@@ -17,7 +17,7 @@
 ## 目錄
 
 - [系統概述](#系統概述)
-- [硬體角色說明（Mega 與 ESP32）](#硬體角色說明mega-與-esp32)
+- [硬體角色說明（Mega、ESP32-CAM、ESP8266）](#硬體角色說明megaesp32-camesp8266)
 - [專案結構](#專案結構)
 - [安裝與啟動](#安裝與啟動)
 - [API 端點](#api-端點)
@@ -44,16 +44,17 @@
 
 ---
 
-## 硬體角色說明（Mega 與 ESP32）
+## 硬體角色說明（Mega、ESP32-CAM、ESP8266）
 
 ### 1) Arduino Mega（號誌控制器）
 
 `ArduinoMega/ArduinoMega.ino` 負責實體號誌燈狀態機與 failsafe：
 
-- 從 `Serial1` 接收來自 ESP32 的指令（格式如 `[CAR_GREEN]`、`[PED_GREEN_10]`）
+- 透過 ESP8266（AT 韌體，`Serial2`）輪詢 `GET /stats` 並解析 `command`
 - 控制車道與行人 RGB 燈的狀態切換
-- 採用 ESP32 -> Mega 的單向 UART 接線（Mega TX 不直連 ESP32 RX）
-- 若超過逾時未收到有效心跳/指令，進入 failsafe 循環（預設安全時序）
+- 由 Mega 本地讀取感測器：壓力（`A0`）、RFID（SPI，`SS=53`、`RST=49`）、照度（`A1`）
+- 在 Mega 端執行 emergency / failsafe 邏輯（含 server 回到非 emergency 時的清除轉譯）
+- 若超過逾時未收到有效 server 心跳/指令，進入 failsafe 循環（預設安全時序）
 
 ### 2) ESP32S3-CAM_Person（行人/輪椅節點）
 
@@ -61,8 +62,7 @@
 
 - 擷取相機影像並以 XOR（`MyIoTKey2026`）混淆
 - 上傳到 `POST /detect_person`
-- 解析伺服器回應 JSON 的 `command`
-- 透過 `Serial` 將指令包成 `[COMMAND]` 發送給 Arduino Mega
+- 目前架構下不再透過 UART 直接控制 Arduino Mega
 
 ### 3) ESP32S3-CAM_Car（車流節點）
 
@@ -70,8 +70,15 @@
 
 - 擷取相機影像並以同樣 XOR 方式混淆
 - 上傳到 `POST /detect_car`
-- 直接接壓力與 RFID 感測器（由 Mega 遷移）
-- 觸發違規擷取上傳（`/capture_violation`）與 emergency 起訖 webhook（`/trigger_emergency`、`/clear_emergency`）
+- 觸發違規擷取上傳（`/capture_violation`）
+- 目前韌體已停用此節點上的壓力 / RFID 本地流程（改回 Mega）
+- 不再透過 UART 轉發控制指令到 Mega
+
+### 4) ESP8266（Mega 的 AT WiFi Bridge）
+
+- 使用原生 AT 韌體（不需燒錄專案自訂韌體）
+- 連接 Mega `Serial2`，由 `WiFiEsp` 函式庫驅動
+- 提供 Mega 輪詢後端 `/stats` 的網路通道，維持指令心跳
 
 ---
 
@@ -87,6 +94,9 @@ SmartTrafficLight/
 ├── person_wheelchair_personWheelchairV2.pt
 ├── ArduinoMega/
 │   └── ArduinoMega.ino
+├── ESP8266.ino
+├── ESP8266_WiFi_Bridge/
+│   └── ESP8266_WiFi_Bridge.ino
 ├── ESP32S3-CAM_Car/
 │   └── ESP32S3-CAM_Car.ino
 ├── ESP32S3-CAM_Person/
@@ -232,12 +242,12 @@ curl -X POST http://127.0.0.1:5000/digital_twin/compare -H 'Content-Type: applic
 
 ## 基本資料流
 
-1. ESP32-CAM 擷取影像並 XOR 混淆後上傳到 Flask API。  
-2. 伺服器解碼影像並執行 YOLO 推論，更新系統狀態。  
-3. 行人流程依 `logic.py` 計算 `command`。  
-4. Car 節點將目前 `command` 以序列格式送往 Arduino Mega。
-5. Car 節點本地處理壓力/RFID 事件並同步後端 emergency/violation 狀態。
-6. Arduino Mega 依指令切換實體號誌燈。
+1. ESP32-CAM（Car / Person）擷取影像並 XOR 混淆後，上傳到 Flask API。  
+2. 伺服器解碼影像並執行推論，更新全域交通狀態（`command`、車流統計、車道資料）。  
+3. Arduino Mega 透過 ESP8266（AT + `WiFiEsp`）輪詢後端 `/stats` 取得最新 `command`。  
+4. Mega 解析 `command` 與車流數（`cars_total`，若缺失則回退 `cars`）並更新本地狀態機上下文。  
+5. Mega 執行實體號誌切換與本地感測邏輯（RFID / 壓力 / 照度 / OLED）。  
+6. 若後端指令心跳中斷，Mega 進入 failsafe 安全時序。  
 
 ---
 
