@@ -187,6 +187,7 @@ bool failSafeMode = true;
 
 // --- RFID emergency ---
 bool emergencyActive = false;
+bool emergencyFromServer = false;  // true only for server-driven emergency sequence
 unsigned long emergencyStartTime = 0;
 
 // --- Pressure sensor ---
@@ -200,7 +201,7 @@ unsigned long lastJamTimeUs    = 0;
 // Whether a red-light violation was detected this vehicle pass
 bool redLightViolation = false;
 
-// Car count: updated via [COUNT_xx] packets from ESP32 camera
+// Car count: updated from /stats ("cars" or "cars_total")
 int carCount = 0;
 
 // --- Illuminance / LED brightness ---
@@ -367,6 +368,12 @@ bool isRecognizedEsp32Command(const String& cmd) {
       || cmd == "KEEP";
 }
 
+bool isEmergencyPhaseCommand(const String& cmd) {
+  return cmd == "EMERGENCY_YELLOW"
+      || cmd == "EMERGENCY_ALL_RED"
+      || cmd == "EMERGENCY_RED";
+}
+
 void processEsp32Command(const String& cmd) {
   if (isRecognizedEsp32Command(cmd)) {
     // Only recognized control packets count as heartbeat.
@@ -402,6 +409,7 @@ void processEsp32Command(const String& cmd) {
     }
   }
   else if (cmd == "EMERGENCY_YELLOW") {
+    emergencyFromServer = true;
     emergencyActive = true;
     if (currentState != STATE_EMERGENCY_YELLOW) {
       emergencyStartTime = 0;
@@ -409,12 +417,14 @@ void processEsp32Command(const String& cmd) {
     }
   }
   else if (cmd == "EMERGENCY_ALL_RED") {
+    emergencyFromServer = true;
     emergencyActive = true;
     if (currentState != STATE_EMERGENCY_ALL_RED && currentState != STATE_EMERGENCY_RED_HOLD) {
       switchState(STATE_EMERGENCY_ALL_RED);
     }
   }
   else if (cmd == "EMERGENCY_RED") {
+    emergencyFromServer = true;
     emergencyActive = true;
     if (currentState != STATE_EMERGENCY_RED_HOLD) {
       emergencyStartTime = millis();
@@ -422,6 +432,7 @@ void processEsp32Command(const String& cmd) {
     }
   }
   else if (cmd == "EMERGENCY_CLEAR") {
+    emergencyFromServer = false;
     emergencyActive = false;
     emergencyStartTime = 0;
     switchState(STATE_PED_RED_WAIT);
@@ -470,11 +481,17 @@ void pollServer() {
     // so FAILSAFE can trigger if link/server remains down.
     return;
   }
+
+  if (emergencyFromServer && emergencyActive && !isEmergencyPhaseCommand(cmd)) {
+    // The server clears emergencies by reverting command to KEEP/non-emergency.
+    processEsp32Command("EMERGENCY_CLEAR");
+  }
+
   // Dispatch the same way as if it arrived on Serial1.
   processEsp32Command(cmd);
 }
 
-// HTTP GET /stats → parse "command" field.
+// HTTP GET /stats → parse "command" plus any local stats the Mega still uses.
 // Returns empty string on any network/parse error.
 String fetchCommandFromServer() {
   if (WiFi.status() != WL_CONNECTED) {
@@ -527,6 +544,15 @@ String fetchCommandFromServer() {
     Serial.println(F("[WiFi] Parse failed → no command"));
     return "";
   }
+
+  long carsTotal = parseJsonLong(body, "cars_total", -1);
+  if (carsTotal < 0) {
+    carsTotal = parseJsonLong(body, "cars", -1);
+  }
+  if (carsTotal >= 0) {
+    carCount = (int)carsTotal;
+  }
+
   Serial.print(F("[WiFi] cmd="));
   Serial.println(cmd);
   return cmd;
@@ -544,6 +570,29 @@ String parseJsonString(const String& json, const String& key) {
   int start = idx + needle.length();
   int end   = json.indexOf('"', start);
   return (end == -1) ? "" : json.substring(start, end);
+}
+
+// Extract a JSON integer value by key.
+long parseJsonLong(const String& json, const String& key, long fallback) {
+  String needle = "\"" + key + "\":";
+  int idx = json.indexOf(needle);
+  if (idx == -1) return fallback;
+
+  int start = idx + needle.length();
+  while (start < json.length() && json[start] == ' ') start++;
+
+  bool negative = false;
+  if (start < json.length() && json[start] == '-') {
+    negative = true;
+    start++;
+  }
+
+  int end = start;
+  while (end < json.length() && isDigit(json[end])) end++;
+  if (end == start) return fallback;
+
+  long value = json.substring(start, end).toInt();
+  return negative ? -value : value;
 }
 
 // ============================================================
@@ -639,6 +688,7 @@ void checkRFID() {
     if (currentState == STATE_EMERGENCY_RED_HOLD &&
         (millis() - emergencyStartTime > EMERGENCY_DURATION)) {
       emergencyActive = false;
+      emergencyFromServer = false;
       emergencyStartTime = 0;
       Serial.println("[RFID] Emergency period ended — resuming normal cycle.");
       switchState(STATE_PED_RED_WAIT);
@@ -665,6 +715,7 @@ void checkRFID() {
 
   if (isEmergency) {
     Serial.println("[RFID] *** EMERGENCY VEHICLE DETECTED — Override! ***");
+    emergencyFromServer = false;
     emergencyActive    = true;
     emergencyStartTime = 0;
     switchState(STATE_EMERGENCY_YELLOW);
