@@ -1,31 +1,24 @@
 // ============================================================
-//  ESP32-S3 CAM — Car Detection + Local Sensor Events
+//  AI Thinker ESP32-CAM — Car Detection
 // ------------------------------------------------------------
-//  SAFE UART WIRING (one-way only):
-//    ESP32 TX0  ──> Mega RX1 (pin 19)
-//    Mega TX*   ──X  NOT connected to ESP32 RX (avoid 5V -> 3.3V risk)
-//    ESP32 GND  <──> Mega GND
-//
-//  SENSOR WIRING (migrated from Mega to ESP32):
-//    Pressure sensor (analog out) -> PRESSURE_PIN (GPIO35 by default), 3V3, GND
-//    RFID MFRC522 (SPI)           -> SS/RST/SCK/MISO/MOSI pins below, 3V3, GND
+//  Board: AI Thinker ESP32-CAM  (no external GPIO connections)
 //
 //  Runtime flow:
-//    - VGA frames -> /detect_car -> command -> [CMD] forwarded to Mega
-//    - Pressure red-light event  -> queue violation capture -> /capture_violation
-//    - RFID emergency UID         -> /trigger_emergency, auto clear -> /clear_emergency
+//    - VGA frames -> POST /detect_car -> server returns command
+//    - Pressure / RFID sensors are now on Arduino Mega directly.
+//    - Violation capture still works via camera.
+//
+//  NOTE: Mega no longer receives UART from this ESP32.
+//        Mega polls server independently via ESP8266 WiFi.
 // ============================================================
 
-#ifndef ENABLE_PRESSURE_SENSOR
-#define ENABLE_PRESSURE_SENSOR 1
-#endif
+// Sensors moved to Mega — disable on this ESP32
+#define ENABLE_PRESSURE_SENSOR 0
+#define ENABLE_RFID_SENSOR     0
 
-#ifndef ENABLE_RFID_SENSOR
-#define ENABLE_RFID_SENSOR 1
-#endif
-
+// Serial debug output (safe: ESP32-CAM TX is not connected to Mega any more)
 #ifndef ENABLE_UART_DEBUG
-#define ENABLE_UART_DEBUG 0
+#define ENABLE_UART_DEBUG 1
 #endif
 
 #include "esp_camera.h"
@@ -61,40 +54,28 @@ const char* XOR_KEY              = "MyIoTKey2026";
   #define DBG_PRINTF(...)  do {} while (0)
 #endif
 
-void sendMegaPacket(const char* cmd) {
-  if (cmd == nullptr || cmd[0] == '\0') return;
-  Serial.print("[");
-  Serial.print(cmd);
-  Serial.println("]");
-}
+// sendMegaPacket() removed — Mega now polls server directly via ESP8266.
+// Commands are delivered through the /stats endpoint, not UART.
 
-// ─────────────────────── CAMERA PINS ────────────────────────
-#define PWDN_GPIO_NUM   -1
+// ─────────────────────── CAMERA PINS (AI Thinker ESP32-CAM) ─
+#define PWDN_GPIO_NUM   32
 #define RESET_GPIO_NUM  -1
-#define XCLK_GPIO_NUM   15
-#define SIOD_GPIO_NUM    4
-#define SIOC_GPIO_NUM    5
-#define Y9_GPIO_NUM     16
-#define Y8_GPIO_NUM     17
-#define Y7_GPIO_NUM     18
-#define Y6_GPIO_NUM     12
-#define Y5_GPIO_NUM     10
-#define Y4_GPIO_NUM      8
-#define Y3_GPIO_NUM      9
-#define Y2_GPIO_NUM     11
-#define VSYNC_GPIO_NUM   6
-#define HREF_GPIO_NUM    7
-#define PCLK_GPIO_NUM   13
+#define XCLK_GPIO_NUM    0
+#define SIOD_GPIO_NUM   26
+#define SIOC_GPIO_NUM   27
+#define Y9_GPIO_NUM     35
+#define Y8_GPIO_NUM     34
+#define Y7_GPIO_NUM     39
+#define Y6_GPIO_NUM     36
+#define Y5_GPIO_NUM     21
+#define Y4_GPIO_NUM     19
+#define Y3_GPIO_NUM     18
+#define Y2_GPIO_NUM      5
+#define VSYNC_GPIO_NUM  25
+#define HREF_GPIO_NUM   23
+#define PCLK_GPIO_NUM   22
 
-// ─────────────────────── SENSOR PINS ────────────────────────
-#define PRESSURE_PIN 35
-
-// Adjust these defaults to your exact ESP32-S3-CAM breakout pinout.
-#define RFID_SS_PIN  36
-#define RFID_RST_PIN 47
-#define RFID_SCK_PIN 21
-#define RFID_MISO_PIN 2
-#define RFID_MOSI_PIN 1
+// Sensor pins removed — RFID and Pressure are now on Arduino Mega.
 
 // ─────────────────────── TIMING / THRESHOLDS ────────────────
 const int FRAME_INTERVAL     = 200;   // ms between normal detections
@@ -142,7 +123,7 @@ unsigned long lastEmergencyWebhookMs = 0;
 volatile int violationQueue = 0;
 int carsOnRoad = 0;
 
-bool assumeCarRed = false;  // inferred from latest non-KEEP command sent to Mega
+bool assumeCarRed = false;  // inferred from latest non-KEEP command returned by server
 unsigned long lastControlPacketMs = 0;
 
 bool pressureOn = false;
@@ -160,20 +141,9 @@ unsigned long localEmergencyStartMs = 0;
 //  SETUP
 // ============================================================
 void setup() {
-  Serial.begin(115200);  // TX0 -> Mega RX1 (one-way only)
+  Serial.begin(115200);  // USB debug (TX not connected to Mega)
 
-#if ENABLE_PRESSURE_SENSOR
-  analogReadResolution(8);  // keep threshold scale close to previous Mega tuning
-  pinMode(PRESSURE_PIN, INPUT);
-#endif
-
-#if ENABLE_RFID_SENSOR
-  SPI.begin(RFID_SCK_PIN, RFID_MISO_PIN, RFID_MOSI_PIN, RFID_SS_PIN);
-  rfid.PCD_Init();
-  DBG_PRINTLN("DBG RFID initialised.");
-#else
-  DBG_PRINTLN("DBG RFID disabled (ENABLE_RFID_SENSOR=0).");
-#endif
+  // Sensors on Mega now — nothing to init here.
 
   camera_config_t config;
   config.ledc_channel  = LEDC_CHANNEL_0;
@@ -249,15 +219,13 @@ void setup() {
 //  LOOP
 // ============================================================
 void loop() {
-  pollPressureSensor();
-  pollRfidSensor();
-  refreshEmergencyHold();
+  // Sensor polling removed (RFID + Pressure now on Mega).
 
   if (violationQueue > 0) {
     violationQueue--;
     DBG_PRINTF("DBG violation capture; queued=%d\n", violationQueue);
     captureViolation();
-    return;  // keep queue handling highest priority
+    return;
   }
 
   if (WiFi.status() != WL_CONNECTED) {
@@ -394,7 +362,6 @@ void pollRfidSensor() {
   bool isEmergency = isKnownEmergencyTag();
   if (isEmergency) {
     if (!localEmergencyActive) {
-      sendMegaPacket("EMERGENCY_YELLOW");
       DBG_PRINTLN("DBG RFID emergency detected.");
       triggerEmergencyWebhook();
       localEmergencyActive = true;
@@ -420,7 +387,6 @@ void refreshEmergencyHold() {
   if (millis() - localEmergencyStartMs <= LOCAL_EMERGENCY_TOTAL_MS) return;
 
   localEmergencyActive = false;
-  sendMegaPacket("EMERGENCY_CLEAR");
   DBG_PRINTLN("DBG emergency hold elapsed; clearing webhook.");
   clearEmergencyWebhook();
 }
@@ -525,7 +491,6 @@ void sendDetectionFrame() {
 
       if (cmd) {
         lastControlPacketMs = millis();
-        sendMegaPacket(cmd);
       }
     }
   } else {

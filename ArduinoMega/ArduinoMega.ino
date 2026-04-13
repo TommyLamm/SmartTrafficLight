@@ -1,15 +1,18 @@
 // ============================================================
 //  Arduino Mega 2560 — Unified Traffic Control System
-//  One-way UART architecture (ESP32 handles pressure + RFID)
+//  WiFi architecture (ESP8266 AT module on Serial2)
 // ------------------------------------------------------------
-//  SAFE WIRING:
-//    ESP32 TX0  ──> Mega RX1 (pin 19)
-//    Mega TX*   ──X  NOT connected to ESP32 RX (avoid 5V -> 3.3V risk)
-//    ESP32 GND  <──> Mega GND
+//  WIRING:
+//    ESP8266 TX    ──> Mega RX2 (pin 17)
+//    ESP8266 RX    ──> Mega TX2 (pin 16)
+//    ESP8266 CH_PD ──> Mega 3.3V  (MUST pull high)
+//    ESP8266 Vcc   ──> Mega 3.3V
+//    ESP8266 GND   ──> Mega GND
 //
 //  Serial Ports
-//    Serial  (USB)   — Debug monitor
-//    Serial1 (19/18) — Receive commands FROM ESP32
+//    Serial  (USB)    — Debug monitor
+//    Serial2 (16/17)  — ESP8266 AT firmware (WiFiEsp library)
+//    Serial1 (18/19)  — Unused / free for future sensors
 //
 //  Traffic LEDs  — Pins 22-27 (R/Y/G for Car #1 + Pedestrian)
 //                  Pins 28-30 (R/Y/G for Car #2 showcase — mirrors Car #1)
@@ -17,13 +20,14 @@
 //  Illuminance   — A1 (local brightness control)
 //
 //  NOTE:
-//    Pressure + RFID sensing has been migrated to ESP32S3-CAM_Car.
+//    Pressure + RFID sensing is handled locally on this Mega.
+//    ESP32 cameras are standalone (no GPIO connections to Mega).
 // ============================================================
 
 // ───────────────────── FEATURE FLAGS ────────────────────────
 // 1 = enabled, 0 = disabled
 #ifndef ENABLE_RFID
-#define ENABLE_RFID 0
+#define ENABLE_RFID 1
 #endif
 
 #ifndef ENABLE_OLED
@@ -31,7 +35,7 @@
 #endif
 
 #ifndef ENABLE_PRESSURE_SENSOR
-#define ENABLE_PRESSURE_SENSOR 0
+#define ENABLE_PRESSURE_SENSOR 1
 #endif
 
 #ifndef ENFORCE_RFID_UID_GATE
@@ -48,6 +52,23 @@
   #include <Adafruit_GFX.h>
   #include <Adafruit_SSD1306.h>
 #endif
+
+// ── WiFi (ESP8266 AT via Serial2) ────────────────────────────
+// Library: "WiFiEsp" by bportaluri (Arduino Library Manager)
+#include "WiFiEsp.h"
+
+// !! CHANGE BEFORE FLASHING !!
+static const char WIFI_SSID[]   = "YOUR_SSID";
+static const char WIFI_PASS[]   = "YOUR_PASSWORD";
+static const char SERVER_HOST[] = "192.168.1.100"; // server IP
+static const int  SERVER_PORT   = 5000;             // Flask port
+static const char STATS_PATH[]  = "/stats";        // GET endpoint
+
+// Poll interval must be < FAILSAFE_TIMEOUT (5000 ms)
+#define POLL_INTERVAL_MS  2000UL
+
+WiFiEspClient wifiClient;
+unsigned long lastPollMs = 0;
 
 // ─────────────────────────── PIN MAP ────────────────────────
 // Car #1 — main light (camera-controlled)
@@ -83,7 +104,7 @@
 #define ILLUM_LOWER   40
 
 // Timing (ms)
-#define FAILSAFE_TIMEOUT   5000UL   // lose ESP32 heartbeat → failsafe
+#define FAILSAFE_TIMEOUT   5000UL   // lose server heartbeat → failsafe
 #define EMERGENCY_DURATION 15000UL  // emergency hold duration
 #define EMERGENCY_YELLOW_DUR 3000UL
 #define EMERGENCY_ALL_RED_DUR 5000UL
@@ -196,8 +217,31 @@ unsigned long lastLogTime = 0;
 //  SETUP
 // ============================================================
 void setup() {
-  Serial.begin(115200);   // USB debug
-  Serial1.begin(115200);  // ESP32 → Mega (receive commands)
+  Serial.begin(115200);    // USB debug
+
+  // ── ESP8266 WiFi init (AT firmware via Serial2) ──────────
+  Serial2.begin(115200);   // ESP8266 TX→RX2(17), RX←TX2(16)
+  WiFi.init(&Serial2);
+  if (WiFi.status() == WL_NO_SHIELD) {
+    Serial.println(F("[WiFi] ESP8266 not found! Check wiring/baud."));
+    // Continue in failsafe rather than halting permanently
+  } else {
+    Serial.print(F("[WiFi] Connecting to "));
+    Serial.println(WIFI_SSID);
+    int wifiAttempts = 0;
+    while (WiFi.status() != WL_CONNECTED && wifiAttempts < 5) {
+      WiFi.begin(WIFI_SSID, WIFI_PASS);
+      delay(5000);
+      wifiAttempts++;
+      Serial.print(F("."));
+    }
+    if (WiFi.status() == WL_CONNECTED) {
+      Serial.print(F("\n[WiFi] Connected! IP: "));
+      Serial.println(WiFi.localIP());
+    } else {
+      Serial.println(F("\n[WiFi] Failed to connect — running in failsafe."));
+    }
+  }
 
   // Traffic LED pins — Car #1
   pinMode(CAR_RED_PIN,    OUTPUT);
@@ -218,7 +262,7 @@ void setup() {
   rfid.PCD_Init();
   Serial.println("[RFID] Legacy local RFID path enabled.");
 #else
-  Serial.println("[RFID] Disabled (migrated to ESP32).");
+  Serial.println("[RFID] Disabled (ENABLE_RFID=0).");
 #endif
 
   // OLED
@@ -236,7 +280,7 @@ void setup() {
 
   switchState(STATE_CAR_GREEN);
   Serial.println("=== STL Mega Integrated System Started ===");
-  Serial.println("    Inputs: ESP32 Serial commands | Illuminance A1");
+  Serial.println("    Inputs: ESP8266 /stats command | local RFID/Pressure | Illuminance A1");
 }
 
 // ============================================================
@@ -245,12 +289,12 @@ void setup() {
 void loop() {
   BrightnessControl();
 
-  // ── 1. RECEIVE COMMANDS FROM ESP32 ──────────────────────
-  handleSerial1();
+  // ── 1. POLL SERVER VIA ESP8266 WiFi ─────────────────────
+  pollServer();
 
   // ── 2. CHECK HEARTBEAT / FAILSAFE ───────────────────────
   if (!failSafeMode && (millis() - lastHeartbeatTime > FAILSAFE_TIMEOUT)) {
-    Serial.println("!! [WARNING] ESP32 lost — entering Failsafe !!");
+    Serial.println("!! [WARNING] WiFi / server lost — entering Failsafe !!");
     failSafeMode = true;
   }
 
@@ -293,9 +337,9 @@ void loop() {
 }
 
 // ============================================================
-//  SECTION A — ESP32 SERIAL COMMAND HANDLER
-//  Protocol: [COMMAND] packets on Serial1
-//  Commands received:
+//  SECTION A — SERVER COMMAND HANDLER
+//  Source: HTTP GET /stats → "command" field (via ESP8266 WiFi)
+//  Commands:
 //    CAR_GREEN         — push traffic to car-green cycle
 //    PED_GREEN_<sec>   — pedestrian crossing duration (seconds)
 //    LANE_STRAIGHT / LEFT / RIGHT / LEFT_STRAIGHT /
@@ -413,50 +457,93 @@ void processEsp32Command(const String& cmd) {
   }
 }
 
-void handleSerial1() {
-  static bool   inPacket = false;
-  static size_t packetLen = 0;
-  static char   packetBuf[96];
+// ── WiFi polling (replaces handleSerial1) ───────────────────
 
-  while (Serial1.available() > 0) {
-    char c = Serial1.read();
+// Poll server every POLL_INTERVAL_MS and dispatch the command.
+void pollServer() {
+  if (millis() - lastPollMs < POLL_INTERVAL_MS) return;
+  lastPollMs = millis();
 
-    if (!inPacket) {
-      if (c == '[') {
-        inPacket = true;
-        packetLen = 0;
-      }
-      continue;
-    }
+  String cmd = fetchCommandFromServer();
+  if (cmd.length() == 0) {
+    // No valid command this poll; keep previous heartbeat timestamp
+    // so FAILSAFE can trigger if link/server remains down.
+    return;
+  }
+  // Dispatch the same way as if it arrived on Serial1.
+  processEsp32Command(cmd);
+}
 
-    if (c == '[') {
-      // Start marker seen before packet close: resync to the latest frame.
-      packetLen = 0;
-      continue;
-    }
+// HTTP GET /stats → parse "command" field.
+// Returns empty string on any network/parse error.
+String fetchCommandFromServer() {
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.begin(WIFI_SSID, WIFI_PASS);
+    Serial.println(F("[WiFi] Not connected → no command"));
+    return "";
+  }
 
-    if (c == ']') {
-      if (packetLen > 0) {
-        packetBuf[packetLen] = '\0';
-        String cmd = String(packetBuf);
-        cmd.trim();
-        if (cmd.length() > 0) {
-          processEsp32Command(cmd);
-        }
-      }
-      inPacket = false;
-      packetLen = 0;
-      continue;
-    }
+  if (!wifiClient.connect(SERVER_HOST, SERVER_PORT)) {
+    Serial.println(F("[WiFi] Connect failed → no command"));
+    return "";
+  }
 
-    if (packetLen < sizeof(packetBuf) - 1) {
-      packetBuf[packetLen++] = c;
-    } else {
-      Serial.println(">> [CMD] Dropped overlong packet.");
-      inPacket = false;
-      packetLen = 0;
+  // HTTP/1.0 avoids chunked transfer encoding.
+  wifiClient.print(F("GET "));
+  wifiClient.print(STATS_PATH);
+  wifiClient.println(F(" HTTP/1.0"));
+  wifiClient.print(F("Host: "));
+  wifiClient.print(SERVER_HOST);
+  wifiClient.print(F(":"));
+  wifiClient.println(SERVER_PORT);
+  wifiClient.println(F("Connection: close"));
+  wifiClient.println();
+
+  // Wait up to 3 s for response.
+  unsigned long t0 = millis();
+  while (!wifiClient.available()) {
+    if (millis() - t0 > 3000) {
+      Serial.println(F("[WiFi] HTTP timeout → no command"));
+      wifiClient.stop();
+      return "";
     }
   }
+
+  // Read response, skip headers.
+  String body = "";
+  bool inBody = false;
+  while (wifiClient.available()) {
+    String line = wifiClient.readStringUntil('\n');
+    if (!inBody) {
+      if (line == "\r" || line.length() == 0) inBody = true;
+    } else {
+      body += line;
+    }
+  }
+  wifiClient.stop();
+
+  String cmd = parseJsonString(body, "command");
+  if (cmd.length() == 0) {
+    Serial.println(F("[WiFi] Parse failed → no command"));
+    return "";
+  }
+  Serial.print(F("[WiFi] cmd="));
+  Serial.println(cmd);
+  return cmd;
+}
+
+// Extract a JSON string value by key (no JSON library needed).
+String parseJsonString(const String& json, const String& key) {
+  String needle = "\"" + key + "\":\"";
+  int idx = json.indexOf(needle);
+  if (idx == -1) {
+    needle = "\"" + key + "\": \"";
+    idx = json.indexOf(needle);
+  }
+  if (idx == -1) return "";
+  int start = idx + needle.length();
+  int end   = json.indexOf('"', start);
+  return (end == -1) ? "" : json.substring(start, end);
 }
 
 // ============================================================
