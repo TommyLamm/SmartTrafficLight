@@ -141,6 +141,7 @@ Once running:
 
 - Main dashboard: `http://127.0.0.1:5000`
 - Algorithm editor: `http://127.0.0.1:5001`
+- Optional (dashboard Edit button target): set env `STL_EDITOR_URL` (default: `https://stledit.gyke.net/`)
 
 ---
 
@@ -157,7 +158,7 @@ Once running:
 - `GET /video_feed_person` — Pedestrian video stream
 - `GET /video_feed_car` — Vehicle video stream
 - `GET /video_feed` — Legacy compatibility (pedestrian stream)
-- `GET /stats` — Returns system status (includes `mode`, `command`, `stream_*_online`)
+- `GET /stats` — Returns system status (includes `mode`, `command`, `cars_total`, `lane_counts`, `tidal_direction`, `sample_window`, `stream_*_online`)
 
 ### Control
 

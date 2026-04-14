@@ -11,6 +11,7 @@ PLATE_MODEL_PATH = os.path.join(BASE_DIR, 'license_plate.pt')   # ← NEW
 XOR_KEY = b"MyIoTKey2026"
 STREAM_ONLINE_TTL_SEC = 5.0
 CAR_TARGET_CLASSES = [2, 3, 5, 7]
+EDITOR_URL = (os.environ.get("STL_EDITOR_URL") or "https://stledit.gyke.net/").strip()
 
 CAR_LANE_REGION_COUNT = 3
 TIDAL_SAMPLE_WINDOW = 12

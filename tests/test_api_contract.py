@@ -1,6 +1,6 @@
 import smart_traffic.state as state
 
-from smart_traffic.web import routes_detect
+from smart_traffic.web import routes_detect, routes_ui
 
 
 def test_stats_contract_contains_expected_fields(app_client):
@@ -17,11 +17,14 @@ def test_stats_contract_contains_expected_fields(app_client):
 
     assert resp.status_code == 200
     assert data["cars"] == 4
+    assert data["cars_total"] == 4
     assert data["persons"] == 2
     assert data["wheelchairs"] == 1
     assert data["command"] == "KEEP"
     assert data["lane_counts"] == [1, 2, 1]
     assert data["tidal_direction"] == "BALANCED"
+    assert isinstance(data["sample_window"], int)
+    assert data["sample_window"] >= 0
     assert "stream_car_online" in data
     assert "stream_person_online" in data
     assert "stream_plate_online" in data
@@ -128,4 +131,14 @@ def test_manual_override_route_sets_command_in_manual_mode(app_client):
     assert override.status_code == 200
     assert override.get_json()["success"] is True
     assert state.sys_state["manual_override"] == "CAR_GREEN"
+
+
+def test_index_uses_configured_editor_url(app_client, monkeypatch):
+    monkeypatch.setattr(routes_ui, "EDITOR_URL", "https://example.com/editor")
+    resp = app_client.get("/")
+    html = resp.get_data(as_text=True)
+
+    assert resp.status_code == 200
+    assert 'id="editor-frame"' in html
+    assert 'data-src="https://example.com/editor"' in html
 

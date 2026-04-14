@@ -50,11 +50,11 @@ def test_server_emergency_sequence_requires_clear_translation():
     assert translated[-2:] == ["EMERGENCY_CLEAR", "KEEP"]
 
 
-def test_stats_contract_exposes_cars_for_mega_carcount(app_client):
+def test_stats_contract_exposes_cars_and_cars_total_for_mega_carcount(app_client):
     state.sys_state["cars"] = 11
 
     payload = app_client.get("/stats").get_json()
 
     assert payload["cars"] == 11
-    assert "cars_total" not in payload
+    assert payload["cars_total"] == 11
 

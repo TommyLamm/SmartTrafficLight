@@ -25,6 +25,10 @@ def _json_no_cache(payload, status=200):
 def stats():
     tick_emergency_phase()
     data = dict(state.sys_state)
+    # Mega polls /stats directly; keep key names aligned with legacy ESP32 parsing.
+    data["command"] = str(data.get("command", "KEEP"))
+    data["cars_total"] = int(data.get("cars", 0))
+    data["sample_window"] = len(state.lane_sample_window)
     data["stream_car_online"] = state.is_car_stream_online()
     data["stream_person_online"] = state.is_person_stream_online()
     data["stream_plate_online"] = state.is_plate_stream_online()   # ← NEW

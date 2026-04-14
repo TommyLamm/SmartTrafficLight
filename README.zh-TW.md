@@ -141,6 +141,7 @@ python app.py
 
 - 主儀表板：`http://127.0.0.1:5000`
 - 演算法編輯器：`http://127.0.0.1:5001`
+- 可選（儀表板 Edit 按鈕目標）：設定環境變數 `STL_EDITOR_URL`（預設：`https://stledit.gyke.net/`）
 
 ---
 
@@ -157,7 +158,7 @@ python app.py
 - `GET /video_feed_person`：行人串流
 - `GET /video_feed_car`：車流串流
 - `GET /video_feed`：相容舊版（行人串流）
-- `GET /stats`：回傳系統狀態（含 `mode`、`command`、`stream_*_online`）
+- `GET /stats`：回傳系統狀態（含 `mode`、`command`、`cars_total`、`lane_counts`、`tidal_direction`、`sample_window`、`stream_*_online`）
 
 ### 控制相關
 

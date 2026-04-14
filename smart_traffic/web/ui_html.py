@@ -466,6 +466,23 @@ INDEX_HTML = """
             .editor-close-btn {
                 border: none; background: transparent; color: #fff; cursor: pointer; font-size: 16px;
             }
+            .editor-load-error {
+                display: none;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                padding: 10px 12px;
+                background: #5b1d1d;
+                color: #fca5a5;
+                border-top: 1px solid #7f1d1d;
+                font-size: 13px;
+            }
+            .editor-load-error a {
+                color: #93c5fd;
+                text-decoration: underline;
+                font-weight: 600;
+                white-space: nowrap;
+            }
         </style>
     </head>
     <body>
@@ -480,10 +497,14 @@ INDEX_HTML = """
             </div>
             <iframe
               id="editor-frame"
-              data-src="https://stledit.gyke.net/"
-              style="width:100%;height:100%;border:none;"
+              data-src="{{ editor_url | e }}"
+              style="width:100%;flex:1;border:none;"
               title="Logic Editor"
             ></iframe>
+            <div id="editor-load-error" class="editor-load-error">
+              <span>Editor not reachable. Check editor URL or open in a new tab.</span>
+              <a id="editor-open-link" href="#" target="_blank" rel="noopener noreferrer">Open editor</a>
+            </div>
           </div>
         </div>
 
@@ -1204,14 +1225,73 @@ INDEX_HTML = """
                 const editorModal = document.getElementById('editor-modal');
                 const editorClose = document.getElementById('editor-close');
                 const editorFrame = document.getElementById('editor-frame');
-                if (settingsBtn && editorModal && editorClose && editorFrame) {
+                const editorLoadError = document.getElementById('editor-load-error');
+                const editorOpenLink = document.getElementById('editor-open-link');
+                if (settingsBtn && editorModal && editorClose && editorFrame && editorLoadError && editorOpenLink) {
+                    let editorLoadTimer = null;
+                    let editorFrameLoaded = false;
+
+                    function clearEditorLoadTimer() {
+                        if (editorLoadTimer) {
+                            clearTimeout(editorLoadTimer);
+                            editorLoadTimer = null;
+                        }
+                    }
+
+                    function showEditorLoadError() {
+                        editorLoadError.style.display = 'flex';
+                    }
+
+                    function hideEditorLoadError() {
+                        editorLoadError.style.display = 'none';
+                    }
+
+                    function beginEditorLoadWatch() {
+                        clearEditorLoadTimer();
+                        editorLoadTimer = setTimeout(function () {
+                            if (!editorFrameLoaded) showEditorLoadError();
+                        }, 8000);
+                    }
+
+                    editorFrame.addEventListener('load', function () {
+                        editorFrameLoaded = true;
+                        clearEditorLoadTimer();
+                        hideEditorLoadError();
+                    });
+
+                    editorFrame.addEventListener('error', function () {
+                        editorFrameLoaded = false;
+                        clearEditorLoadTimer();
+                        showEditorLoadError();
+                    });
+
                     settingsBtn.addEventListener('click', function () {
-                        if (!editorFrame.src && editorFrame.dataset.src) editorFrame.src = editorFrame.dataset.src;
+                        const editorUrl = (editorFrame.dataset.src || '').trim();
+                        if (!editorUrl) {
+                            showEditorLoadError();
+                            editorModal.style.display = 'flex';
+                            return;
+                        }
+
+                        editorOpenLink.href = editorUrl;
+                        hideEditorLoadError();
+
+                        if (editorFrame.src !== editorUrl || !editorFrameLoaded) {
+                            editorFrameLoaded = false;
+                            editorFrame.src = editorUrl;
+                            beginEditorLoadWatch();
+                        }
                         editorModal.style.display = 'flex';
                     });
-                    editorClose.addEventListener('click', function () { editorModal.style.display = 'none'; });
+                    editorClose.addEventListener('click', function () {
+                        clearEditorLoadTimer();
+                        editorModal.style.display = 'none';
+                    });
                     editorModal.addEventListener('click', function (e) {
-                        if (e.target === editorModal) editorModal.style.display = 'none';
+                        if (e.target === editorModal) {
+                            clearEditorLoadTimer();
+                            editorModal.style.display = 'none';
+                        }
                     });
                 }
             });

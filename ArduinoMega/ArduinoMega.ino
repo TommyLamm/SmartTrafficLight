@@ -60,8 +60,8 @@
 // !! CHANGE BEFORE FLASHING !!
 static const char WIFI_SSID[]   = "YOUR_SSID";
 static const char WIFI_PASS[]   = "YOUR_PASSWORD";
-static const char SERVER_HOST[] = "192.168.1.100"; // server IP
-static const int  SERVER_PORT   = 5000;             // Flask port
+static const char SERVER_HOST[] = "stl.gyke.net";  // server hostname or IP
+static const int  SERVER_PORT   = 80;               // HTTP port for domain endpoint
 static const char STATS_PATH[]  = "/stats";        // GET endpoint
 
 // Poll interval must be < FAILSAFE_TIMEOUT (5000 ms)
