@@ -56,6 +56,48 @@ def parse_json_long(json_str: str, key: str, fallback: int = -1) -> int:
     return -value if negative else value
 
 
+def parse_json_int_array(json_str: str, key: str, max_count: int):
+    """Python stub of parseJsonIntArray() from ArduinoMega.ino."""
+    if max_count <= 0:
+        return []
+    needle = f'"{key}":'
+    idx = json_str.find(needle)
+    if idx == -1:
+        return []
+    start = json_str.find("[", idx + len(needle))
+    if start == -1:
+        return []
+    end = json_str.find("]", start + 1)
+    if end == -1:
+        return []
+
+    values = []
+    pos = start + 1
+    while pos < end and len(values) < max_count:
+        while pos < end and json_str[pos] in {" ", ","}:
+            pos += 1
+        if pos >= end:
+            break
+
+        negative = False
+        if json_str[pos] == "-":
+            negative = True
+            pos += 1
+
+        digit_start = pos
+        while pos < end and json_str[pos].isdigit():
+            pos += 1
+        if digit_start == pos:
+            while pos < end and json_str[pos] != ",":
+                pos += 1
+            continue
+
+        value = int(json_str[digit_start:pos])
+        values.append(-value if negative else value)
+
+    return values
+
+
 class TestParseJsonString:
     def test_compact_form(self):
         assert parse_json_string('{"command":"CAR_GREEN"}', "command") == "CAR_GREEN"
@@ -101,6 +143,23 @@ class TestParseJsonLong:
 
     def test_large_value(self):
         assert parse_json_long('{"count":99999}', "count") == 99999
+
+
+class TestParseJsonIntArray:
+    def test_parses_lane_counts(self):
+        assert parse_json_int_array('{"lane_counts":[1,2,3]}', "lane_counts", 3) == [1, 2, 3]
+
+    def test_parses_with_spaces(self):
+        assert parse_json_int_array('{"lane_counts": [0, 4, 2]}', "lane_counts", 3) == [0, 4, 2]
+
+    def test_limits_max_count(self):
+        assert parse_json_int_array('{"lane_counts":[1,2,3,4]}', "lane_counts", 3) == [1, 2, 3]
+
+    def test_missing_key_returns_empty(self):
+        assert parse_json_int_array('{"cars_total":7}', "lane_counts", 3) == []
+
+    def test_negative_values_supported(self):
+        assert parse_json_int_array('{"lane_counts":[-1,2,-3]}', "lane_counts", 3) == [-1, 2, -3]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════

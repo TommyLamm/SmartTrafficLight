@@ -112,6 +112,7 @@ unsigned long lastPollMs = 0;
 #define PED_BLINK_DURATION  4000UL
 #define PED_RED_WAIT_DUR    2000UL
 #define FAILSAFE_CAR_GREEN 30000UL  // car green time when no AI signal
+#define SERVER_LANE_BUCKETS 3
 
 // ─────────────────────────── RFID UIDs ──────────────────────
 // Replace these with your real 4-byte emergency tag UIDs.
@@ -203,6 +204,10 @@ bool redLightViolation = false;
 
 // Car count: updated from /stats ("cars" or "cars_total")
 int carCount = 0;
+// Extra /stats analytics (aligned with ESP32 /detect_car response fields)
+int serverLaneCounts[SERVER_LANE_BUCKETS] = {0, 0, 0};
+String serverTidalDirection = "UNKNOWN";
+int serverSampleWindow = 0;
 
 // --- Illuminance / LED brightness ---
 int illuminance = 0;
@@ -553,8 +558,38 @@ String fetchCommandFromServer() {
     carCount = (int)carsTotal;
   }
 
+  int parsedLaneCounts[SERVER_LANE_BUCKETS] = {0, 0, 0};
+  int parsedLaneCount = parseJsonIntArray(body, "lane_counts", parsedLaneCounts, SERVER_LANE_BUCKETS);
+  if (parsedLaneCount > 0) {
+    for (int i = 0; i < SERVER_LANE_BUCKETS; i++) {
+      serverLaneCounts[i] = (i < parsedLaneCount) ? parsedLaneCounts[i] : 0;
+    }
+  }
+
+  String tidalDirection = parseJsonString(body, "tidal_direction");
+  if (tidalDirection.length() > 0) {
+    serverTidalDirection = tidalDirection;
+  }
+
+  long sampleWindow = parseJsonLong(body, "sample_window", -1);
+  if (sampleWindow >= 0) {
+    serverSampleWindow = (int)sampleWindow;
+  }
+
   Serial.print(F("[WiFi] cmd="));
   Serial.println(cmd);
+  Serial.print(F("{cars_total="));
+  Serial.print(carCount);
+  Serial.print(F(", lane_counts=("));
+  for (int i = 0; i < SERVER_LANE_BUCKETS; i++) {
+    if (i > 0) Serial.print(F(","));
+    Serial.print(serverLaneCounts[i]);
+  }
+  Serial.print(F("), tidal_direction="));
+  Serial.print(serverTidalDirection);
+  Serial.print(F(", sample_window="));
+  Serial.print(serverSampleWindow);
+  Serial.println(F("}"));
   return cmd;
 }
 
@@ -593,6 +628,48 @@ long parseJsonLong(const String& json, const String& key, long fallback) {
 
   long value = json.substring(start, end).toInt();
   return negative ? -value : value;
+}
+
+// Extract a JSON integer array value by key (e.g. "lane_counts":[1,2,3]).
+// Returns number of parsed integers, up to maxCount.
+int parseJsonIntArray(const String& json, const String& key, int* out, int maxCount) {
+  if (out == nullptr || maxCount <= 0) return 0;
+
+  String needle = "\"" + key + "\":";
+  int idx = json.indexOf(needle);
+  if (idx == -1) return 0;
+
+  int start = json.indexOf('[', idx + needle.length());
+  if (start == -1) return 0;
+  int end = json.indexOf(']', start + 1);
+  if (end == -1) return 0;
+
+  int pos = start + 1;
+  int count = 0;
+  while (pos < end && count < maxCount) {
+    while (pos < end && (json[pos] == ' ' || json[pos] == ',')) pos++;
+    if (pos >= end) break;
+
+    bool negative = false;
+    if (json[pos] == '-') {
+      negative = true;
+      pos++;
+    }
+
+    int digitStart = pos;
+    while (pos < end && isDigit(json[pos])) pos++;
+    if (digitStart == pos) {
+      while (pos < end && json[pos] != ',') pos++;
+      continue;
+    }
+
+    int value = json.substring(digitStart, pos).toInt();
+    out[count++] = negative ? -value : value;
+    while (pos < end && json[pos] != ',') pos++;
+    if (pos < end && json[pos] == ',') pos++;
+  }
+
+  return count;
 }
 
 // ============================================================
