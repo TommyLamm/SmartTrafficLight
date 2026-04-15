@@ -402,10 +402,17 @@ void processEsp32Command(const String& cmd) {
 
   // ── Traffic light commands ─────────────────────────────
   if (cmd == "CAR_GREEN") {
-    if (currentState != STATE_CAR_GREEN && currentState != STATE_CAR_YELLOW
-        && currentState != STATE_EMERGENCY_YELLOW
-        && currentState != STATE_EMERGENCY_ALL_RED
-        && currentState != STATE_EMERGENCY_RED_HOLD) {
+    bool alreadyCarGreenOrTransitioning =
+        currentState == STATE_CAR_GREEN
+        || currentState == STATE_CAR_YELLOW
+        || currentState == STATE_PED_BLINK
+        || currentState == STATE_PED_RED_WAIT;
+    bool emergencyState =
+        currentState == STATE_EMERGENCY_YELLOW
+        || currentState == STATE_EMERGENCY_ALL_RED
+        || currentState == STATE_EMERGENCY_RED_HOLD;
+
+    if (!alreadyCarGreenOrTransitioning && !emergencyState) {
       Serial.println(">> [CMD] Priority: switch to car-green cycle.");
       switchState(STATE_PED_BLINK);
     }
