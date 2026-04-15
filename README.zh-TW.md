@@ -172,7 +172,7 @@ python app.py
 - `POST /set_mode`：切換 `AUTO` / `MANUAL`
 - `POST /manual_override`：手動送出號誌指令
 - `POST /toggle_detection`：切換 AI 偵測開關
-- `POST /toggle_emergency`：啟用/停用 emergency 優先功能
+- `POST /toggle_emergency`：啟用/停用 emergency 優先功能（停用後 Mega 會忽略 RFID/伺服器 emergency 觸發）
 - `POST /toggle_wheelchair_priority`：啟用/停用輪椅自適應綠燈秒數
 - `POST /trigger_emergency`：啟動 emergency 三階段狀態（`YELLOW -> ALL_RED -> HOLD`）
 - `POST /clear_emergency`：清除 emergency 狀態並回復一般邏輯

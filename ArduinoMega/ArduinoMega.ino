@@ -107,9 +107,11 @@ int lastWifiStatus = WL_IDLE_STATUS;
 #define COOLING_PERIOD_DURATION   300000000UL  // 300 s in µs
 #define CAR_COUNT_JAM_THRESHOLD    10       // vehicles on road
 
-// Illuminance (0-255 ADC range assumed; scale to your sensor)
-#define ILLUM_UPPER  100
-#define ILLUM_LOWER   40
+// Illuminance thresholds for Mega ADC (0-1023)
+#define ILLUM_UPPER  700
+#define ILLUM_LOWER  260
+#define MIN_BRIGHTNESS 110
+#define SOFTWARE_PWM_PERIOD_US 3000UL
 
 // Timing (ms)
 #define FAILSAFE_TIMEOUT   5000UL   // lose server heartbeat → failsafe
@@ -198,6 +200,7 @@ bool failSafeMode = true;
 bool emergencyActive = false;
 bool emergencyFromServer = false;  // true only for server-driven emergency sequence
 unsigned long emergencyStartTime = 0;
+bool emergencyPriorityEnabled = true;
 
 // --- Pressure sensor ---
 bool     pressureOn        = false;
@@ -451,6 +454,7 @@ void processEsp32Command(const String& cmd) {
     }
   }
   else if (cmd == "EMERGENCY_YELLOW") {
+    if (!emergencyPriorityEnabled) return;
     emergencyFromServer = true;
     emergencyActive = true;
     forceCarGreenWithYellow = false;
@@ -460,6 +464,7 @@ void processEsp32Command(const String& cmd) {
     }
   }
   else if (cmd == "EMERGENCY_ALL_RED") {
+    if (!emergencyPriorityEnabled) return;
     emergencyFromServer = true;
     emergencyActive = true;
     forceCarGreenWithYellow = false;
@@ -468,6 +473,7 @@ void processEsp32Command(const String& cmd) {
     }
   }
   else if (cmd == "EMERGENCY_RED") {
+    if (!emergencyPriorityEnabled) return;
     emergencyFromServer = true;
     emergencyActive = true;
     forceCarGreenWithYellow = false;
@@ -750,6 +756,20 @@ String fetchCommandFromServer() {
     }
   }
 
+  bool parsedEmergencyPriority = parseJsonBool(body, "emergency_priority_active", emergencyPriorityEnabled);
+  if (parsedEmergencyPriority != emergencyPriorityEnabled) {
+    emergencyPriorityEnabled = parsedEmergencyPriority;
+    Serial.print(F(">> [WiFi] Emergency priority: "));
+    Serial.println(emergencyPriorityEnabled ? F("ON") : F("OFF"));
+    if (!emergencyPriorityEnabled && emergencyActive) {
+      emergencyActive = false;
+      emergencyFromServer = false;
+      emergencyStartTime = 0;
+      forceCarGreenWithYellow = false;
+      switchState(STATE_PED_RED_WAIT);
+    }
+  }
+
   Serial.print(F("[WiFi] cmd="));
   Serial.println(cmd);
   Serial.print(F("{cars_total="));
@@ -765,6 +785,8 @@ String fetchCommandFromServer() {
   Serial.print(serverSampleWindow);
   Serial.print(F(", mode="));
   Serial.print(serverControlMode);
+  Serial.print(F(", emergency_priority="));
+  Serial.print(emergencyPriorityEnabled ? F("ON") : F("OFF"));
   Serial.println(F("}"));
   return cmd;
 }
@@ -804,6 +826,20 @@ long parseJsonLong(const String& json, const String& key, long fallback) {
 
   long value = json.substring(start, end).toInt();
   return negative ? -value : value;
+}
+
+bool parseJsonBool(const String& json, const String& key, bool fallback) {
+  String needle = "\"" + key + "\":";
+  int idx = json.indexOf(needle);
+  if (idx == -1) return fallback;
+
+  int start = idx + needle.length();
+  while (start < json.length() && json[start] == ' ') start++;
+  if (start >= json.length()) return fallback;
+
+  if (json.substring(start, start + 4) == "true") return true;
+  if (json.substring(start, start + 5) == "false") return false;
+  return fallback;
 }
 
 // Extract a JSON integer array value by key (e.g. "lane_counts":[1,2,3]).
@@ -914,15 +950,15 @@ void detect_jam(){
 //  Adjusts the LED brightness PWM based on ambient light.
 // ============================================================
 void BrightnessControl(){
-  illuminance = analogRead(A1);
-  if(illuminance > ILLUM_UPPER){
+  illuminance = analogRead(ILLUMINANCE_PIN);
+  if (illuminance >= ILLUM_UPPER) {
     brightness = 255;
   }
-  else if(illuminance < ILLUM_LOWER){
-    brightness = 135;
+  else if (illuminance <= ILLUM_LOWER) {
+    brightness = MIN_BRIGHTNESS;
   }
   else {
-    brightness = illuminance * 2 + 55;
+    brightness = map(illuminance, ILLUM_LOWER, ILLUM_UPPER, MIN_BRIGHTNESS, 255);
   }
 }
 
@@ -938,6 +974,10 @@ void checkRFID() {
 #if !ENABLE_RFID
   return;
 #else
+  if (!emergencyPriorityEnabled) {
+    return;
+  }
+
   if (emergencyActive) {
     if (currentState == STATE_EMERGENCY_RED_HOLD &&
         (millis() - emergencyStartTime > EMERGENCY_DURATION)) {
@@ -1248,25 +1288,39 @@ void switchState(TrafficState newState) {
   printSystemStatus(0);
 }
 
-// Sets traffic light LEDs — scaled by ambient brightness
+bool isSoftwarePwmOn(int level) {
+  if (level <= 0) return false;
+  if (level >= 255) return true;
+  unsigned long phaseUs = micros() % SOFTWARE_PWM_PERIOD_US;
+  unsigned long onWindowUs = ((unsigned long)level * SOFTWARE_PWM_PERIOD_US) / 255UL;
+  return phaseUs < onWindowUs;
+}
+
+void writeLampPin(uint8_t pin, int enabled) {
+  int level = enabled ? brightness : 0;
+  digitalWrite(pin, isSoftwarePwmOn(level) ? HIGH : LOW);
+}
+
+// Sets traffic light LEDs — scaled by ambient brightness.
+// These pins are not hardware-PWM pins on Mega, so use software PWM.
 // Parameters: car (R,G,Y), pedestrian (R,G,Y)  — 0 = off, 1 = on
 // Car #2 is controlled separately via setCar2Lights().
 void setLights(int cr, int cg, int cy, int pr, int pg, int py) {
   // Car #1
-  analogWrite(CAR_RED_PIN,    cr ? brightness : 0);
-  analogWrite(CAR_GREEN_PIN,  cg ? brightness : 0);
-  analogWrite(CAR_YELLOW_PIN, cy ? brightness : 0);
+  writeLampPin(CAR_RED_PIN,    cr);
+  writeLampPin(CAR_GREEN_PIN,  cg);
+  writeLampPin(CAR_YELLOW_PIN, cy);
   // Pedestrian
-  analogWrite(PED_RED_PIN,    pr ? brightness : 0);
-  analogWrite(PED_GREEN_PIN,  pg ? brightness : 0);
-  analogWrite(PED_YELLOW_PIN, py ? brightness : 0);
+  writeLampPin(PED_RED_PIN,    pr);
+  writeLampPin(PED_GREEN_PIN,  pg);
+  writeLampPin(PED_YELLOW_PIN, py);
 }
 
 // Sets Car #2 (showcase / cross-road direction) LEDs independently.
 void setCar2Lights(int r, int g, int y) {
-  analogWrite(CAR2_RED_PIN,    r ? brightness : 0);
-  analogWrite(CAR2_GREEN_PIN,  g ? brightness : 0);
-  analogWrite(CAR2_YELLOW_PIN, y ? brightness : 0);
+  writeLampPin(CAR2_RED_PIN,    r);
+  writeLampPin(CAR2_GREEN_PIN,  g);
+  writeLampPin(CAR2_YELLOW_PIN, y);
 }
 
 String laneLabel(TidalLane lane) {

@@ -172,7 +172,7 @@ Once running:
 - `POST /set_mode` — Switch between `AUTO` and `MANUAL` modes
 - `POST /manual_override` — Send a manual signal command
 - `POST /toggle_detection` — Toggle AI detection on/off
-- `POST /toggle_emergency` — Enable/disable emergency-priority feature
+- `POST /toggle_emergency` — Enable/disable emergency-priority feature (when off, Mega ignores RFID/server emergency triggers)
 - `POST /toggle_wheelchair_priority` — Enable/disable adaptive wheelchair timing
 - `POST /trigger_emergency` — Start emergency 3-phase state (`YELLOW -> ALL_RED -> HOLD`)
 - `POST /clear_emergency` — Clear emergency state and resume normal logic
