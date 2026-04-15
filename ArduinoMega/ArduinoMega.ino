@@ -209,6 +209,7 @@ unsigned long lastJamTimeUs    = 0;
 
 // Whether a red-light violation was detected this vehicle pass
 bool redLightViolation = false;
+bool forceCarGreenWithYellow = false;
 
 // Car count: updated from /stats ("cars" or "cars_total")
 int carCount = 0;
@@ -311,6 +312,21 @@ void loop() {
   if (!failSafeMode && (millis() - lastHeartbeatTime > FAILSAFE_TIMEOUT)) {
     Serial.println("!! [WARNING] WiFi / server lost — entering Failsafe !!");
     failSafeMode = true;
+    forceCarGreenWithYellow = false;
+
+    bool inPedestrianPhase =
+        currentState == STATE_PED_GREEN
+        || currentState == STATE_PED_BLINK
+        || currentState == STATE_PED_RED_WAIT;
+    bool inEmergencyPhase =
+        currentState == STATE_EMERGENCY_YELLOW
+        || currentState == STATE_EMERGENCY_ALL_RED
+        || currentState == STATE_EMERGENCY_RED_HOLD;
+
+    // On failsafe entry, ensure pedestrian/red phases transition through yellow first.
+    if (inPedestrianPhase && !inEmergencyPhase) {
+      switchState(STATE_CAR_YELLOW);
+    }
   }
 
   // ── 3. OPTIONAL LOCAL SENSORS (disabled by default) ─────
@@ -402,24 +418,29 @@ void processEsp32Command(const String& cmd) {
 
   // ── Traffic light commands ─────────────────────────────
   if (cmd == "CAR_GREEN") {
-    bool alreadyCarGreenOrTransitioning =
-        currentState == STATE_CAR_GREEN
-        || currentState == STATE_CAR_YELLOW
-        || currentState == STATE_PED_BLINK
-        || currentState == STATE_PED_RED_WAIT;
     bool emergencyState =
         currentState == STATE_EMERGENCY_YELLOW
         || currentState == STATE_EMERGENCY_ALL_RED
         || currentState == STATE_EMERGENCY_RED_HOLD;
 
-    if (!alreadyCarGreenOrTransitioning && !emergencyState) {
-      Serial.println(">> [CMD] Priority: switch to car-green cycle.");
-      switchState(STATE_PED_BLINK);
+    if (!emergencyState) {
+      if (currentState != STATE_CAR_GREEN) {
+        if (!forceCarGreenWithYellow) {
+          Serial.println(">> [CMD] Priority: switch to car-green cycle.");
+        }
+        forceCarGreenWithYellow = true;
+      }
+
+      // Only transition once; repeated CAR_GREEN polls must not reset countdown.
+      if (currentState == STATE_PED_GREEN) {
+        switchState(STATE_PED_BLINK);
+      }
     }
   }
   else if (cmd.startsWith("PED_GREEN_")) {
     long seconds = cmd.substring(10).toInt();
     if (seconds >= 5 && seconds <= 120) {
+      forceCarGreenWithYellow = false;
       Serial.print(">> [CMD] Pedestrian crossing — ");
       Serial.print(seconds);
       Serial.println(" s.");
@@ -432,6 +453,7 @@ void processEsp32Command(const String& cmd) {
   else if (cmd == "EMERGENCY_YELLOW") {
     emergencyFromServer = true;
     emergencyActive = true;
+    forceCarGreenWithYellow = false;
     if (currentState != STATE_EMERGENCY_YELLOW) {
       emergencyStartTime = 0;
       switchState(STATE_EMERGENCY_YELLOW);
@@ -440,6 +462,7 @@ void processEsp32Command(const String& cmd) {
   else if (cmd == "EMERGENCY_ALL_RED") {
     emergencyFromServer = true;
     emergencyActive = true;
+    forceCarGreenWithYellow = false;
     if (currentState != STATE_EMERGENCY_ALL_RED && currentState != STATE_EMERGENCY_RED_HOLD) {
       switchState(STATE_EMERGENCY_ALL_RED);
     }
@@ -447,6 +470,7 @@ void processEsp32Command(const String& cmd) {
   else if (cmd == "EMERGENCY_RED") {
     emergencyFromServer = true;
     emergencyActive = true;
+    forceCarGreenWithYellow = false;
     if (currentState != STATE_EMERGENCY_RED_HOLD) {
       emergencyStartTime = millis();
       switchState(STATE_EMERGENCY_RED_HOLD);
@@ -456,6 +480,7 @@ void processEsp32Command(const String& cmd) {
     emergencyFromServer = false;
     emergencyActive = false;
     emergencyStartTime = 0;
+    forceCarGreenWithYellow = false;
     switchState(STATE_PED_RED_WAIT);
   }
 
@@ -978,6 +1003,7 @@ void runStateMachine() {
     case STATE_CAR_GREEN:
       setLights(0, 1, 0,  1, 0, 0);
       setCar2Lights(1, 0, 0);
+      forceCarGreenWithYellow = false;
       if (failSafeMode && timeInState > FAILSAFE_CAR_GREEN) {
         pedGreenDuration = 15000;
         switchState(STATE_CAR_YELLOW);
@@ -989,7 +1015,10 @@ void runStateMachine() {
     case STATE_CAR_YELLOW:
       setLights(0, 0, 1,  1, 0, 0);
       setCar2Lights(0, 0, 1);
-      if (timeInState > YELLOW_DURATION) switchState(STATE_PED_GREEN);
+      if (timeInState > YELLOW_DURATION) {
+        if (forceCarGreenWithYellow) switchState(STATE_CAR_GREEN);
+        else switchState(STATE_PED_GREEN);
+      }
       break;
 
     // Pedestrian Green — Car #1 red, Car #2 gets GREEN (cross traffic moves)
@@ -1013,7 +1042,10 @@ void runStateMachine() {
     case STATE_PED_RED_WAIT:
       setLights(1, 0, 0,  1, 0, 0);
       setCar2Lights(1, 0, 0);
-      if (timeInState > PED_RED_WAIT_DUR) switchState(STATE_CAR_GREEN);
+      if (timeInState > PED_RED_WAIT_DUR) {
+        if (forceCarGreenWithYellow) switchState(STATE_CAR_YELLOW);
+        else switchState(STATE_CAR_GREEN);
+      }
       break;
 
     // Emergency states — Car #2 stays RED throughout
