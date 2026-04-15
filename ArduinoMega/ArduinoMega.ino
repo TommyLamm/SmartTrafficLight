@@ -509,7 +509,9 @@ const char* wifiStatusName(int status) {
   switch (status) {
     case WL_NO_SHIELD: return "WL_NO_SHIELD";
     case WL_IDLE_STATUS: return "WL_IDLE_STATUS";
+#ifdef WL_NO_SSID_AVAIL
     case WL_NO_SSID_AVAIL: return "WL_NO_SSID_AVAIL";
+#endif
     case WL_CONNECTED: return "WL_CONNECTED";
     case WL_CONNECT_FAILED: return "WL_CONNECT_FAILED";
     default: return "WL_UNKNOWN";
