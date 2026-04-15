@@ -932,6 +932,7 @@ void BrightnessControl(){
 //  Reads MFRC522. If a known emergency UID is detected,
 //  the system enters emergency 3-phase sequence:
 //  EMERGENCY_YELLOW -> EMERGENCY_ALL_RED -> EMERGENCY_RED_HOLD.
+//  Note: EMERGENCY_RED_HOLD keeps a green corridor for the emergency direction.
 // ============================================================
 void checkRFID() {
 #if !ENABLE_RFID
@@ -1065,13 +1066,9 @@ void runStateMachine() {
       break;
 
     case STATE_EMERGENCY_RED_HOLD:
-      setLights(1, 0, 0,  1, 0, 0);
+      // Hold a green corridor for emergency vehicles.
+      setLights(0, 1, 0,  1, 0, 0);
       setCar2Lights(1, 0, 0);
-      if ((timeInState / 300) % 2 == 0) {
-        analogWrite(CAR_YELLOW_PIN,  brightness / 3);
-      } else {
-        analogWrite(CAR_YELLOW_PIN,  0);
-      }
       break;
   }
 }
@@ -1333,7 +1330,7 @@ void printSystemStatus(unsigned long timeInState) {
       remaining = ((long)EMERGENCY_ALL_RED_DUR - (long)timeInState) / 1000;
       break;
     case STATE_EMERGENCY_RED_HOLD:
-      lightStr  = "Emergency:RED_HOLD";
+      lightStr  = "Emergency:GREEN_HOLD";
       remaining = ((long)EMERGENCY_DURATION - (long)(millis() - emergencyStartTime)) / 1000;
       break;
   }
