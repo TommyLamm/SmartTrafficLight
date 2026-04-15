@@ -38,6 +38,10 @@
 #define ENABLE_PRESSURE_SENSOR 1
 #endif
 
+#ifndef ENABLE_ILLUMINANCE_SENSOR
+#define ENABLE_ILLUMINANCE_SENSOR 0
+#endif
+
 #ifndef ENFORCE_RFID_UID_GATE
 #define ENFORCE_RFID_UID_GATE 1
 #endif
@@ -58,8 +62,8 @@
 #include "WiFiEsp.h"
 
 // !! CHANGE BEFORE FLASHING !!
-static const char WIFI_SSID[]   = "YOUR_SSID";
-static const char WIFI_PASS[]   = "YOUR_PASSWORD";
+static const char WIFI_SSID[]   = "Team2";
+static const char WIFI_PASS[]   = "ee3070team2";
 static const char SERVER_HOST[] = "stl.gyke.net";  // server hostname or IP
 // Optional fallback endpoint (typically fixed backend IP). Leave empty to disable.
 static const char SERVER_FALLBACK_HOST[] = "";
@@ -299,14 +303,22 @@ void setup() {
 
   switchState(STATE_CAR_GREEN);
   Serial.println("=== STL Mega Integrated System Started ===");
+#if ENABLE_ILLUMINANCE_SENSOR
   Serial.println("    Inputs: ESP8266 /stats command | local RFID/Pressure | Illuminance A1");
+#else
+  Serial.println("    Inputs: ESP8266 /stats command | local RFID/Pressure | Illuminance DISABLED");
+#endif
 }
 
 // ============================================================
 //  LOOP
 // ============================================================
 void loop() {
+#if ENABLE_ILLUMINANCE_SENSOR
   BrightnessControl();
+#else
+  brightness = 255;
+#endif
 
   // ── 1. POLL SERVER VIA ESP8266 WiFi ─────────────────────
   pollServer();

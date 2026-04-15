@@ -17,19 +17,25 @@ def decide_light(person_count, vehicle_count, wheelchair_count, current_light_st
         command = f"PED_GREEN_{green_sec}"
         current_light_state = "PED_WHEELCHAIR"
 
-    # 優先級 2：大量行人
+    # 優先級 2：超大量行人（10+）即使有車也優先放行
+    elif person_count >= 10:
+        if current_light_state != "PED_LONG":
+            command = "PED_GREEN_20"
+            current_light_state = "PED_LONG"
+
+    # 優先級 3：大量行人（車流低）
     elif person_count > 3 and vehicle_count <= 1:
         if current_light_state != "PED_LONG":
             command = "PED_GREEN_20"
             current_light_state = "PED_LONG"
 
-    # 優先級 3：一般行人
+    # 優先級 4：一般行人
     elif person_count > 0 and vehicle_count <= 1:
         if current_light_state != "PED_SHORT":
             command = "PED_GREEN_10"
             current_light_state = "PED_SHORT"
 
-    # 優先級 4：車流為主
+    # 優先級 5：車流為主
     elif vehicle_count > 2 or person_count == 0:
         if current_light_state != "CAR_GREEN":
             command = "CAR_GREEN"
