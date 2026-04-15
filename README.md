@@ -80,6 +80,12 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 - Connected to Mega `Serial2` and used via `WiFiEsp`
 - Provides Mega's network path to poll backend `/stats` and keep command heartbeat alive
 
+**Mega `/stats` polling troubleshooting**
+- In `ArduinoMega/ArduinoMega.ino`, set `WIFI_SSID` / `WIFI_PASS` correctly before flashing.
+- Keep `SERVER_HOST="stl.gyke.net"` for normal operation; set `SERVER_FALLBACK_HOST` only when you need a fixed-IP fallback route.
+- If serial logs show repeated `Not connected` or `Connect failed`, verify ESP8266 AT firmware, 3.3V power stability, and that TCP `:80` to backend is reachable from the same WiFi.
+- New firmware diagnostics separate link state, TCP connect failure, HTTP timeout, and JSON parse failure to make root-cause isolation faster.
+
 ---
 
 ## Project Structure

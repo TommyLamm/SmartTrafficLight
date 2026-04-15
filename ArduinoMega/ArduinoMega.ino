@@ -61,14 +61,22 @@
 static const char WIFI_SSID[]   = "YOUR_SSID";
 static const char WIFI_PASS[]   = "YOUR_PASSWORD";
 static const char SERVER_HOST[] = "stl.gyke.net";  // server hostname or IP
+// Optional fallback endpoint (typically fixed backend IP). Leave empty to disable.
+static const char SERVER_FALLBACK_HOST[] = "";
 static const int  SERVER_PORT   = 80;               // HTTP port for domain endpoint
 static const char STATS_PATH[]  = "/stats";        // GET endpoint
 
 // Poll interval must be < FAILSAFE_TIMEOUT (5000 ms)
 #define POLL_INTERVAL_MS  2000UL
+#define WIFI_RECONNECT_INTERVAL_MS 10000UL
+#define WIFI_HTTP_TIMEOUT_MS 3000UL
+#define WIFI_DIAG_INTERVAL_MS 2000UL
 
 WiFiEspClient wifiClient;
 unsigned long lastPollMs = 0;
+unsigned long nextWifiReconnectMs = 0;
+unsigned long lastWifiDiagMs = 0;
+int lastWifiStatus = WL_IDLE_STATUS;
 
 // ─────────────────────────── PIN MAP ────────────────────────
 // Car #1 — main light (camera-controlled)
@@ -496,18 +504,122 @@ void pollServer() {
   processEsp32Command(cmd);
 }
 
+const char* wifiStatusName(int status) {
+  switch (status) {
+    case WL_NO_SHIELD: return "WL_NO_SHIELD";
+    case WL_IDLE_STATUS: return "WL_IDLE_STATUS";
+    case WL_NO_SSID_AVAIL: return "WL_NO_SSID_AVAIL";
+    case WL_CONNECTED: return "WL_CONNECTED";
+    case WL_CONNECT_FAILED: return "WL_CONNECT_FAILED";
+    default: return "WL_UNKNOWN";
+  }
+}
+
+bool shouldLogWifiDiag() {
+  unsigned long now = millis();
+  if (now - lastWifiDiagMs < WIFI_DIAG_INTERVAL_MS) return false;
+  lastWifiDiagMs = now;
+  return true;
+}
+
+bool ensureWiFiConnected() {
+  int status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    if (lastWifiStatus != WL_CONNECTED) {
+      Serial.println(F("[WiFi] Link restored"));
+      lastWifiStatus = WL_CONNECTED;
+    }
+    return true;
+  }
+
+  if (status != lastWifiStatus) {
+    Serial.print(F("[WiFi] Link state="));
+    Serial.print(wifiStatusName(status));
+    Serial.print(F(" ("));
+    Serial.print(status);
+    Serial.println(F(")"));
+    lastWifiStatus = status;
+  }
+
+  unsigned long now = millis();
+  if (now < nextWifiReconnectMs) {
+    if (shouldLogWifiDiag()) {
+      Serial.println(F("[WiFi] Not connected → waiting for reconnect window"));
+    }
+    return false;
+  }
+
+  nextWifiReconnectMs = now + WIFI_RECONNECT_INTERVAL_MS;
+  Serial.print(F("[WiFi] Reconnect attempt SSID="));
+  Serial.println(WIFI_SSID);
+  int beginStatus = WiFi.begin(WIFI_SSID, WIFI_PASS);
+  if (beginStatus == WL_CONNECTED || WiFi.status() == WL_CONNECTED) {
+    Serial.println(F("[WiFi] Reconnect success"));
+    lastWifiStatus = WL_CONNECTED;
+    return true;
+  }
+
+  if (shouldLogWifiDiag()) {
+    Serial.print(F("[WiFi] Reconnect failed state="));
+    Serial.print(wifiStatusName(beginStatus));
+    Serial.print(F(" ("));
+    Serial.print(beginStatus);
+    Serial.println(F(")"));
+  }
+  return false;
+}
+
+bool connectStatsSocket(const char*& connectedHost) {
+  connectedHost = nullptr;
+  if (wifiClient.connected()) {
+    wifiClient.stop();
+  }
+
+  if (wifiClient.connect(SERVER_HOST, SERVER_PORT)) {
+    connectedHost = SERVER_HOST;
+    return true;
+  }
+
+  if (SERVER_FALLBACK_HOST[0] != '\0') {
+    if (wifiClient.connect(SERVER_FALLBACK_HOST, SERVER_PORT)) {
+      connectedHost = SERVER_FALLBACK_HOST;
+      return true;
+    }
+  }
+
+  return false;
+}
+
 // HTTP GET /stats → parse "command" plus any local stats the Mega still uses.
 // Returns empty string on any network/parse error.
 String fetchCommandFromServer() {
-  if (WiFi.status() != WL_CONNECTED) {
-    WiFi.begin(WIFI_SSID, WIFI_PASS);
-    Serial.println(F("[WiFi] Not connected → no command"));
+  if (!ensureWiFiConnected()) {
+    if (shouldLogWifiDiag()) {
+      Serial.println(F("[WiFi] Not connected → no command"));
+    }
     return "";
   }
 
-  if (!wifiClient.connect(SERVER_HOST, SERVER_PORT)) {
-    Serial.println(F("[WiFi] Connect failed → no command"));
+  const char* connectedHost = nullptr;
+  if (!connectStatsSocket(connectedHost)) {
+    if (shouldLogWifiDiag()) {
+      Serial.print(F("[WiFi] Connect failed host="));
+      Serial.print(SERVER_HOST);
+      if (SERVER_FALLBACK_HOST[0] != '\0') {
+        Serial.print(F(" fallback="));
+        Serial.print(SERVER_FALLBACK_HOST);
+      }
+      Serial.println(F(" → no command"));
+    }
     return "";
+  }
+
+  if (connectedHost != nullptr
+      && SERVER_FALLBACK_HOST[0] != '\0'
+      && strcmp(connectedHost, SERVER_HOST) != 0
+      && shouldLogWifiDiag()) {
+    Serial.print(F("[WiFi] Connected via fallback host "));
+    Serial.println(connectedHost);
   }
 
   // HTTP/1.0 avoids chunked transfer encoding.
@@ -524,17 +636,28 @@ String fetchCommandFromServer() {
   // Wait up to 3 s for response.
   unsigned long t0 = millis();
   while (!wifiClient.available()) {
-    if (millis() - t0 > 3000) {
-      Serial.println(F("[WiFi] HTTP timeout → no command"));
+    if (millis() - t0 > WIFI_HTTP_TIMEOUT_MS) {
+      if (shouldLogWifiDiag()) {
+        Serial.println(F("[WiFi] HTTP timeout waiting response → no command"));
+      }
       wifiClient.stop();
       return "";
     }
   }
 
-  // Read response, skip headers.
+  String statusLine = wifiClient.readStringUntil('\n');
+  statusLine.trim();
+  if (!(statusLine.startsWith("HTTP/1.0 200") || statusLine.startsWith("HTTP/1.1 200"))) {
+    if (shouldLogWifiDiag()) {
+      Serial.print(F("[WiFi] HTTP status unexpected: "));
+      Serial.println(statusLine);
+    }
+  }
+
+  // Read response body.
   String body = "";
   bool inBody = false;
-  while (wifiClient.available()) {
+  while (wifiClient.connected() || wifiClient.available()) {
     String line = wifiClient.readStringUntil('\n');
     if (!inBody) {
       if (line == "\r" || line.length() == 0) inBody = true;
@@ -546,7 +669,10 @@ String fetchCommandFromServer() {
 
   String cmd = parseJsonString(body, "command");
   if (cmd.length() == 0) {
-    Serial.println(F("[WiFi] Parse failed → no command"));
+    if (shouldLogWifiDiag()) {
+      Serial.print(F("[WiFi] Parse failed body_len="));
+      Serial.println(body.length());
+    }
     return "";
   }
 

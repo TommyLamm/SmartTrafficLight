@@ -576,3 +576,66 @@ class TestRfidUid:
 
     def test_all_zeros_does_not_match(self):
         assert check_rfid_uid([0x00, 0x00, 0x00, 0x00]) is False
+
+
+class MegaWifiTransportStub:
+    """Stub for Mega WiFi reconnect throttling + host fallback connect flow."""
+
+    def __init__(self, reconnect_interval_ms=10_000, fallback_host=""):
+        self.reconnect_interval_ms = reconnect_interval_ms
+        self.fallback_host = fallback_host
+        self.next_reconnect_ms = 0
+        self.last_wifi_status = "WL_IDLE_STATUS"
+        self.connected_host = None
+        self.connect_attempts = []
+
+    def ensure_wifi_connected(self, status: str, now_ms: int, begin_status: str = "WL_CONNECT_FAILED") -> bool:
+        if status == "WL_CONNECTED":
+            self.last_wifi_status = "WL_CONNECTED"
+            return True
+        if now_ms < self.next_reconnect_ms:
+            return False
+        self.next_reconnect_ms = now_ms + self.reconnect_interval_ms
+        if begin_status == "WL_CONNECTED":
+            self.last_wifi_status = "WL_CONNECTED"
+            return True
+        self.last_wifi_status = begin_status
+        return False
+
+    def connect_stats_socket(self, primary_ok: bool, fallback_ok: bool = False) -> bool:
+        self.connected_host = None
+        self.connect_attempts = ["primary"]
+        if primary_ok:
+            self.connected_host = "primary"
+            return True
+        if self.fallback_host:
+            self.connect_attempts.append("fallback")
+            if fallback_ok:
+                self.connected_host = "fallback"
+                return True
+        return False
+
+
+class TestMegaWifiTransportStub:
+    def test_reconnect_is_throttled_between_windows(self):
+        wifi = MegaWifiTransportStub(reconnect_interval_ms=10_000)
+        assert wifi.ensure_wifi_connected("WL_DISCONNECTED", now_ms=0, begin_status="WL_CONNECT_FAILED") is False
+        assert wifi.ensure_wifi_connected("WL_DISCONNECTED", now_ms=5_000, begin_status="WL_CONNECTED") is False
+        assert wifi.ensure_wifi_connected("WL_DISCONNECTED", now_ms=10_000, begin_status="WL_CONNECTED") is True
+
+    def test_connected_status_short_circuits_reconnect(self):
+        wifi = MegaWifiTransportStub()
+        assert wifi.ensure_wifi_connected("WL_CONNECTED", now_ms=123) is True
+        assert wifi.next_reconnect_ms == 0
+
+    def test_socket_uses_fallback_when_primary_fails(self):
+        wifi = MegaWifiTransportStub(fallback_host="203.0.113.10")
+        assert wifi.connect_stats_socket(primary_ok=False, fallback_ok=True) is True
+        assert wifi.connect_attempts == ["primary", "fallback"]
+        assert wifi.connected_host == "fallback"
+
+    def test_socket_fails_without_fallback(self):
+        wifi = MegaWifiTransportStub(fallback_host="")
+        assert wifi.connect_stats_socket(primary_ok=False, fallback_ok=True) is False
+        assert wifi.connect_attempts == ["primary"]
+        assert wifi.connected_host is None

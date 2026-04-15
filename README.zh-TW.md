@@ -80,6 +80,12 @@
 - 連接 Mega `Serial2`，由 `WiFiEsp` 函式庫驅動
 - 提供 Mega 輪詢後端 `/stats` 的網路通道，維持指令心跳
 
+**Mega `/stats` 輪詢故障排除**
+- 燒錄前請先在 `ArduinoMega/ArduinoMega.ino` 正確設定 `WIFI_SSID` / `WIFI_PASS`。
+- 一般情況維持 `SERVER_HOST="stl.gyke.net"`；只有在需要固定 IP 備援路徑時才設定 `SERVER_FALLBACK_HOST`。
+- 若序列埠持續出現 `Not connected` 或 `Connect failed`，請優先檢查 ESP8266 AT 韌體、3.3V 供電穩定性，以及同一個 WiFi 下是否可連到後端 `:80`。
+- 新版韌體診斷會分開顯示 link state、TCP connect、HTTP timeout、JSON parse 失敗，方便快速定位根因。
+
 ---
 
 ## 專案結構
