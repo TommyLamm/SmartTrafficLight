@@ -12,7 +12,7 @@ def decide_light(person_count, vehicle_count, wheelchair_count, current_light_st
         return command, current_light_state
 
     # ✅ 優先級 1：偵測到輪椅使用者，依人數調整秒數（上限 60s）
-    if wheelchair_priority_active and wheelchair_count > 0 and vehicle_count <= 1:
+    if wheelchair_priority_active and wheelchair_count > 0:
         green_sec = min(10 + wheelchair_count * 10, 60)
         command = f"PED_GREEN_{green_sec}"
         current_light_state = "PED_WHEELCHAIR"
