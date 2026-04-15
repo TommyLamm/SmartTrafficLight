@@ -1,15 +1,22 @@
 import os
+import re
 
 from flask import Blueprint, jsonify, request, send_from_directory
 
 import smart_traffic.state as state
-from smart_traffic.services.control import clear_emergency, tick_emergency_phase, trigger_emergency_vehicle
+from smart_traffic.services.control import (
+    apply_manual_command,
+    clear_emergency,
+    tick_emergency_phase,
+    trigger_emergency_vehicle,
+)
 
 VIOLATIONS_DIR = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "violations"
 )
 
 bp_controls = Blueprint("controls", __name__)
+_PED_GREEN_CMD_RE = re.compile(r"^PED_GREEN_(\d+)$")
 
 
 def _json_no_cache(payload, status=200):
@@ -42,17 +49,55 @@ def stats():
 
 @bp_controls.route('/set_mode', methods=['POST'])
 def set_mode():
-    mode = request.json.get("mode")
+    payload = request.json or {}
+    mode = payload.get("mode")
     if mode in ["AUTO", "MANUAL"]:
         state.sys_state["mode"] = mode
+        if mode == "AUTO":
+            state.sys_state["manual_override"] = None
+            state.sys_state["manual_command"] = None
+            state.sys_state["last_manual_label"] = None
+            state.sys_state["command"] = "KEEP"
+        else:
+            state.sys_state["manual_override"] = None
+            state.sys_state["manual_command"] = None
+            state.sys_state["command"] = "KEEP"
     return jsonify({"success": True, "mode": state.sys_state["mode"]})
+
+
+def _is_valid_manual_command(command):
+    if command == "CAR_GREEN":
+        return True
+    if not isinstance(command, str):
+        return False
+    match = _PED_GREEN_CMD_RE.fullmatch(command.strip())
+    if not match:
+        return False
+    seconds = int(match.group(1))
+    return 5 <= seconds <= 120
 
 
 @bp_controls.route('/manual_override', methods=['POST'])
 def manual_override():
-    if state.sys_state["mode"] == "MANUAL":
-        state.sys_state["manual_override"] = request.json.get("command")
-    return jsonify({"success": True})
+    if state.sys_state["mode"] != "MANUAL":
+        return _json_no_cache(
+            {"success": False, "error": "Switch to MANUAL mode before overriding"},
+            status=400,
+        )
+
+    payload = request.json or {}
+    command = payload.get("command")
+    if not _is_valid_manual_command(command):
+        return _json_no_cache({"success": False, "error": "Invalid manual command"}, status=400)
+
+    apply_manual_command(command)
+    return _json_no_cache(
+        {
+            "success": True,
+            "command": state.sys_state["command"],
+            "last_manual_label": state.sys_state["last_manual_label"],
+        }
+    )
 
 
 @bp_controls.route('/toggle_detection', methods=['POST'])

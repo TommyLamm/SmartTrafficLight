@@ -9,6 +9,24 @@ _EMERGENCY_ALL_RED_DURATION = 5.0
 _EMERGENCY_HOLD_DURATION = 15.0
 
 
+def apply_manual_command(cmd):
+    cmd = str(cmd or "").strip()
+    if not cmd:
+        return False
+
+    sys_state["manual_command"] = cmd
+    sys_state["command"] = cmd
+    sys_state["light_state"] = "MANUAL_OVERRIDE"
+
+    if cmd == "CAR_GREEN":
+        sys_state["last_manual_label"] = "Car Green"
+    elif cmd == "PED_GREEN_20":
+        sys_state["last_manual_label"] = "Ped Green (20s)"
+    else:
+        sys_state["last_manual_label"] = cmd
+    return True
+
+
 def trigger_emergency_vehicle():
     if not sys_state["emergency_priority_active"]:
         return
@@ -82,17 +100,10 @@ def apply_person_control_logic(person_count, wheelchair_count):
         sys_state["light_state"] = new_state
     else:
         if sys_state["manual_override"]:
-            cmd = sys_state["manual_override"]
-            sys_state["command"] = cmd
-            sys_state["light_state"] = "MANUAL_OVERRIDE"
-
-            if cmd == "CAR_GREEN":
-                sys_state["last_manual_label"] = "Car Green"
-            elif cmd == "PED_GREEN_20":
-                sys_state["last_manual_label"] = "Ped Green (20s)"
-            else:
-                sys_state["last_manual_label"] = cmd
-
+            apply_manual_command(sys_state["manual_override"])
             sys_state["manual_override"] = None
+        elif sys_state["manual_command"]:
+            sys_state["command"] = str(sys_state["manual_command"])
+            sys_state["light_state"] = "MANUAL_OVERRIDE"
         else:
             sys_state["command"] = "KEEP"

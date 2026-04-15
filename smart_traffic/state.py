@@ -43,6 +43,7 @@ sys_state = {
     "light_state": "UNKNOWN",
     "mode": "AUTO",
     "manual_override": None,
+    "manual_command": None,
     "last_manual_label": None,
     "detection": True,
     "lane_counts": [0] * CAR_LANE_REGION_COUNT,

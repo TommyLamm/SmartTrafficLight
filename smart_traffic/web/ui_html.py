@@ -1158,8 +1158,15 @@ INDEX_HTML = """
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({mode: mode})
                 })
-                .then(r => r.json())
-                .then(data => renderSystemMode(data.mode));
+                .then(async r => ({ ok: r.ok, data: await r.json() }))
+                .then(({ ok, data }) => {
+                    if (!ok || !data || !data.mode) {
+                        console.error('setMode failed', data);
+                        return;
+                    }
+                    renderSystemMode(data.mode);
+                })
+                .catch(err => console.error('setMode error', err));
             }
 
             function forceCommand(cmd, btn) {
@@ -1169,9 +1176,22 @@ INDEX_HTML = """
                 fetch('/manual_override', {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({command: cmd})
-                }).then(() => {
-                    btn.innerText = "Sent!";
-                    setTimeout(() => { btn.innerText = originalText; btn.disabled = false; }, 1000);
+                })
+                .then(async r => ({ ok: r.ok, data: await r.json() }))
+                .then(({ ok, data }) => {
+                    if (!ok || !data || data.success === false) {
+                        btn.innerText = "Failed";
+                        console.error('manual_override failed', data);
+                    } else {
+                        btn.innerText = "Sent!";
+                    }
+                    setTimeout(() => { btn.innerText = originalText; btn.disabled = false; }, 1200);
+                })
+                .catch(err => {
+                    btn.innerText = "Failed";
+                    btn.disabled = false;
+                    console.error('manual_override error', err);
+                    setTimeout(() => { btn.innerText = originalText; }, 1200);
                 });
             }
 

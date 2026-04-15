@@ -38,7 +38,7 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
   - Switches to `CAR_GREEN` when vehicle traffic is dominant
 - **Control Modes**
   - `AUTO`: Automatic decision-making via `logic.py`
-  - `MANUAL`: Manual commands issued through the dashboard
+  - `MANUAL`: Dashboard commands are latched and kept in `/stats` until changed or mode switches
 - **Hot Reload**
   - Edits to `logic.py` can be applied instantly via `/save_code` without restarting the main service
 
