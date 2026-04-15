@@ -51,6 +51,7 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 `ArduinoMega/ArduinoMega.ino` manages the physical signal light state machine and failsafe:
 
 - Polls `GET /stats` through an ESP8266 AT module (`Serial2`, pins 16/17) and consumes `command`
+- Mirrors backend control mode in serial status (`[AI-Smart]` / `[MANUAL]`), with `[Failsafe]` taking priority
 - Controls state transitions for vehicle and pedestrian RGB lights
 - Reads local sensors on Mega: pressure (`A0`), RFID (SPI, `SS=53`, `RST=49`), illuminance (`A1`)
 - Runs emergency/failsafe logic locally (including emergency-clear translation when server command returns to non-emergency)

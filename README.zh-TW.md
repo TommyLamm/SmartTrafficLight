@@ -51,6 +51,7 @@
 `ArduinoMega/ArduinoMega.ino` 負責實體號誌燈狀態機與 failsafe：
 
 - 透過 ESP8266（AT 韌體，`Serial2`）輪詢 `GET /stats` 並解析 `command`
+- 序列埠除錯狀態會同步後端控制模式（`[AI-Smart]` / `[MANUAL]`），且 `[Failsafe]` 仍為最高優先顯示
 - 控制車道與行人 RGB 燈的狀態切換
 - 由 Mega 本地讀取感測器：壓力（`A0`）、RFID（SPI，`SS=53`、`RST=49`）、照度（`A1`）
 - 在 Mega 端執行 emergency / failsafe 邏輯（含 server 回到非 emergency 時的清除轉譯）

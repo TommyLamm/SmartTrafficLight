@@ -216,6 +216,7 @@ int carCount = 0;
 int serverLaneCounts[SERVER_LANE_BUCKETS] = {0, 0, 0};
 String serverTidalDirection = "UNKNOWN";
 int serverSampleWindow = 0;
+String serverControlMode = "AUTO";
 
 // --- Illuminance / LED brightness ---
 int illuminance = 0;
@@ -702,6 +703,19 @@ String fetchCommandFromServer() {
     serverSampleWindow = (int)sampleWindow;
   }
 
+  String mode = parseJsonString(body, "mode");
+  if (mode.length() > 0) {
+    mode.trim();
+    mode.toUpperCase();
+    if (mode == "AUTO" || mode == "MANUAL") {
+      if (serverControlMode != mode) {
+        serverControlMode = mode;
+        Serial.print(F(">> [WiFi] Control mode: "));
+        Serial.println(serverControlMode);
+      }
+    }
+  }
+
   Serial.print(F("[WiFi] cmd="));
   Serial.println(cmd);
   Serial.print(F("{cars_total="));
@@ -715,6 +729,8 @@ String fetchCommandFromServer() {
   Serial.print(serverTidalDirection);
   Serial.print(F(", sample_window="));
   Serial.print(serverSampleWindow);
+  Serial.print(F(", mode="));
+  Serial.print(serverControlMode);
   Serial.println(F("}"));
   return cmd;
 }
@@ -1231,7 +1247,14 @@ String laneLabel(TidalLane lane) {
 }
 
 void printSystemStatus(unsigned long timeInState) {
-  String modeStr  = failSafeMode    ? "[Failsafe]" : "[AI-Smart]";
+  String modeStr;
+  if (failSafeMode) {
+    modeStr = "[Failsafe]";
+  } else if (serverControlMode == "MANUAL") {
+    modeStr = "[MANUAL]";
+  } else {
+    modeStr = "[AI-Smart]";
+  }
   String emgStr   = emergencyActive ? " [EMERGENCY]" : "";
   String jamStr   = jam             ? " [JAM]"       : "";
   String lightStr;
@@ -1274,7 +1297,10 @@ void printSystemStatus(unsigned long timeInState) {
       break;
   }
 
-  String timeStr  = (remaining < 0) ? "Awaiting AI cmd..." : String(remaining) + "s";
+  String waitingLabel = (serverControlMode == "MANUAL")
+                        ? "Awaiting manual cmd..."
+                        : "Awaiting AI cmd...";
+  String timeStr  = (remaining < 0) ? waitingLabel : String(remaining) + "s";
   String laneStr  = " | Lane:" + laneLabel(currentLane);
 
   Serial.print(modeStr); Serial.print(emgStr); Serial.print(jamStr);
