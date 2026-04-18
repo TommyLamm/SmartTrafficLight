@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from ..config import XOR_KEY
+from ..config import VIOLATION_HISTORY_MAXLEN, XOR_KEY
 from ..models import car_model          # reuse existing YOLO — swap for plate model later
 from ..services.decode import decode_image
 from ..state import infer_lock, sys_state
@@ -104,6 +104,9 @@ def process_violation_data(obfuscated_bytes):
         "plate_confidence": plate_conf,
     }
     sys_state["violations"].append(record)
+    # Trim to keep only the newest records
+    if len(sys_state["violations"]) > VIOLATION_HISTORY_MAXLEN:
+        sys_state["violations"] = sys_state["violations"][-VIOLATION_HISTORY_MAXLEN:]
 
     return {
         "success": True,

@@ -12,7 +12,7 @@
 //  Serial Ports
 //    Serial  (USB)    — Debug monitor
 //    Serial2 (16/17)  — ESP8266 AT firmware (WiFiEsp library)
-//    Serial1 (18/19)  — Unused / free for future sensors
+//    Serial1 (18/19)  — Unused (formerly ESP32 link, now free)
 //
 //  Traffic LEDs  — Pins 22-27 (R/Y/G for Car #1 + Pedestrian)
 //                  Pins 28-30 (R/Y/G for Car #2 showcase — mirrors Car #1)
@@ -124,7 +124,8 @@ bool wifiHardwareAvailable = true;
 #define SOFTWARE_PWM_PERIOD_US 3000UL
 
 // Timing (ms)
-#define FAILSAFE_TIMEOUT   5000UL   // lose server heartbeat → failsafe
+#define FAILSAFE_TIMEOUT   9000UL   // lose server heartbeat → failsafe
+                                     // must be > POLL_INTERVAL_MS + WIFI_HTTP_TIMEOUT_MS
 #define EMERGENCY_DURATION 15000UL  // emergency hold duration
 #define EMERGENCY_YELLOW_DUR 3000UL
 #define EMERGENCY_ALL_RED_DUR 5000UL
@@ -1312,9 +1313,36 @@ void writeEmergency() {
 // ============================================================
 
 void requestPedestrianCrossing(unsigned long duration) {
-  if (currentState == STATE_CAR_GREEN && !emergencyActive) {
-    pedGreenDuration = duration;
-    switchState(STATE_CAR_YELLOW);
+  if (emergencyActive) {
+    Serial.println(F(">> [CMD] PED_GREEN ignored — emergency active."));
+    return;
+  }
+
+  switch (currentState) {
+    case STATE_CAR_GREEN:
+      pedGreenDuration = duration;
+      switchState(STATE_CAR_YELLOW);
+      break;
+
+    case STATE_CAR_YELLOW:
+      // Yellow is already counting down; update duration for upcoming PED_GREEN.
+      pedGreenDuration = duration;
+      // Ensure FSM transitions to PED_GREEN (not back to CAR_GREEN).
+      forceCarGreenWithYellow = false;
+      Serial.println(F(">> [CMD] PED_GREEN deferred — CAR_YELLOW in progress."));
+      break;
+
+    case STATE_PED_GREEN:
+      // Already in pedestrian phase — extend/shorten the remaining green time.
+      pedGreenDuration = duration;
+      stateStartTime = millis();  // restart countdown with new duration
+      Serial.println(F(">> [CMD] PED_GREEN duration updated in-flight."));
+      break;
+
+    default:
+      Serial.print(F(">> [CMD] PED_GREEN ignored — state="));
+      Serial.println(currentState);
+      break;
   }
 }
 

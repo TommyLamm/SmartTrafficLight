@@ -24,3 +24,6 @@ LANE_SPLIT_BOTTOM_RATIO = 0.495
 
 # Licence-plate OCR — max unique plates kept in sys_state["plates"]
 PLATE_HISTORY_MAXLEN = 50
+
+# Maximum violation records kept in sys_state["violations"]
+VIOLATION_HISTORY_MAXLEN = 100

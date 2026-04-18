@@ -71,13 +71,12 @@ def tick_emergency_phase():
         return True
 
     if phase == "EMERGENCY_RED":
-        if phase_until > 0.0 and now >= phase_until:
-            clear_emergency()
-            return False
-        sys_state["command"] = "EMERGENCY_RED"
-        sys_state["light_state"] = "EMERGENCY_RED"
-        return True
+        # phase_until is always set (by the ALL_RED_CLEAR → EMERGENCY_RED
+        # transition above), so reaching here means the hold period expired.
+        clear_emergency()
+        return False
 
+    # Unknown phase — defensive cleanup.
     clear_emergency()
     return False
 
