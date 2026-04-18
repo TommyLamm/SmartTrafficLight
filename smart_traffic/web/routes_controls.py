@@ -28,9 +28,60 @@ def _json_no_cache(payload, status=200):
     return resp
 
 
+def _build_mega_stats_payload():
+    command = str(state.sys_state.get("command", "KEEP") or "KEEP")
+
+    try:
+        cars_total = int(state.sys_state.get("cars", 0))
+    except (TypeError, ValueError):
+        cars_total = 0
+
+    raw_lane_counts = state.sys_state.get("lane_counts", [0, 0, 0])
+    if not isinstance(raw_lane_counts, (list, tuple)):
+        raw_lane_counts = [0, 0, 0]
+
+    lane_counts = []
+    for value in list(raw_lane_counts)[:3]:
+        try:
+            lane_counts.append(int(value))
+        except (TypeError, ValueError):
+            lane_counts.append(0)
+    while len(lane_counts) < 3:
+        lane_counts.append(0)
+
+    tidal_direction = str(state.sys_state.get("tidal_direction", "BALANCED") or "BALANCED")
+
+    try:
+        sample_window = int(len(state.lane_sample_window))
+    except (TypeError, ValueError):
+        sample_window = 0
+
+    mode = str(state.sys_state.get("mode", "AUTO") or "AUTO").upper()
+    if mode not in ("AUTO", "MANUAL"):
+        mode = "AUTO"
+
+    emergency_priority_active = bool(state.sys_state.get("emergency_priority_active", True))
+
+    return {
+        "command": command,
+        "cars_total": cars_total,
+        "lane_counts": lane_counts,
+        "tidal_direction": tidal_direction,
+        "sample_window": sample_window,
+        "mode": mode,
+        "emergency_priority_active": emergency_priority_active,
+    }
+
+
 @bp_controls.route('/stats')
 def stats():
     tick_emergency_phase()
+
+    # Keep default /stats payload unchanged for UI; use ?client=mega for compact MCU payload.
+    client = str(request.args.get("client", "")).strip().lower()
+    if client == "mega":
+        return _json_no_cache(_build_mega_stats_payload())
+
     data = dict(state.sys_state)
     # Mega polls /stats directly; keep key names aligned with legacy ESP32 parsing.
     data["command"] = str(data.get("command", "KEEP"))

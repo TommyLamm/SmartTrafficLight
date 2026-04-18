@@ -68,7 +68,7 @@ static const char SERVER_HOST[] = "stl.gyke.net";  // server hostname or IP
 // Optional fallback endpoint (typically fixed backend IP). Leave empty to disable.
 static const char SERVER_FALLBACK_HOST[] = "";
 static const int  SERVER_PORT   = 80;               // HTTP port for domain endpoint
-static const char STATS_PATH[]  = "/stats";        // GET endpoint
+static const char STATS_PATH[]  = "/stats?client=mega"; // GET endpoint (compact payload)
 
 // Poll interval must be < FAILSAFE_TIMEOUT (5000 ms)
 #define POLL_INTERVAL_MS  2000UL
