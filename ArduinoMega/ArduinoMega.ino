@@ -77,10 +77,16 @@ static const char STATS_PATH[]  = "/stats";        // GET endpoint
 #define WIFI_DIAG_INTERVAL_MS 2000UL
 
 WiFiEspClient wifiClient;
+// HTTP body buffer to avoid dynamic String heap fragmentation
+#define HTTP_BODY_BUF_SIZE 512
+static char httpBodyBuf[HTTP_BODY_BUF_SIZE];
+
 unsigned long lastPollMs = 0;
-unsigned long nextWifiReconnectMs = 0;
+unsigned long lastWifiReconnectMs = 0;
 unsigned long lastWifiDiagMs = 0;
 int lastWifiStatus = WL_IDLE_STATUS;
+// Whether WiFi hardware (ESP8266) was detected on setup
+bool wifiHardwareAvailable = true;
 
 // ─────────────────────────── PIN MAP ────────────────────────
 // Car #1 — main light (camera-controlled)
@@ -107,13 +113,13 @@ int lastWifiStatus = WL_IDLE_STATUS;
 // ─────────────────────────── CONSTANTS ──────────────────────
 // Pressure sensor (legacy local path, disabled by default)
 #define PRESSURE_THRESHOLD         60       // ADC counts
-#define JAM_DURATION_THRESHOLD     60000000UL  // 60 s in µs
-#define COOLING_PERIOD_DURATION   300000000UL  // 300 s in µs
+#define JAM_DURATION_THRESHOLD_MS 60000UL      // 60 s in ms
+#define COOLING_PERIOD_DURATION_MS 300000UL    // 300 s in ms
 #define CAR_COUNT_JAM_THRESHOLD    10       // vehicles on road
 
-// Illuminance thresholds for Mega ADC (0-1023)
-#define ILLUM_UPPER  700
-#define ILLUM_LOWER  260
+// Illuminance thresholds for Mega ADC (0-150, do not modify)
+#define ILLUM_UPPER  100
+#define ILLUM_LOWER  40
 #define MIN_BRIGHTNESS 110
 #define SOFTWARE_PWM_PERIOD_US 3000UL
 
@@ -144,7 +150,7 @@ int lastWifiStatus = WL_IDLE_STATUS;
 #if ENABLE_RFID && ENFORCE_RFID_UID_GATE
 #if ((EMERGENCY_UID_1_B0 == 0xDE) && (EMERGENCY_UID_1_B1 == 0xAD) && (EMERGENCY_UID_1_B2 == 0xBE) && (EMERGENCY_UID_1_B3 == 0xEF)) || \
     ((EMERGENCY_UID_2_B0 == 0xCA) && (EMERGENCY_UID_2_B1 == 0xFE) && (EMERGENCY_UID_2_B2 == 0xBA) && (EMERGENCY_UID_2_B3 == 0xBE))
-#error "RFID UID gate: replace placeholder EMERGENCY_UID_
+#error "RFID UID gate: replace placeholder EMERGENCY_UID_"
 #endif
 #endif
 
@@ -208,11 +214,11 @@ bool emergencyPriorityEnabled = true;
 
 // --- Pressure sensor ---
 bool     pressureOn        = false;
-unsigned long pressureStartUs  = 0;
+unsigned long pressureStartMs  = 0;
 unsigned long pressureDuration = 0;
 bool     jam               = false;
 bool     coolingPeriod     = false;
-unsigned long lastJamTimeUs    = 0;
+unsigned long lastJamTimeMs    = 0;
 
 // Whether a red-light violation was detected this vehicle pass
 bool redLightViolation = false;
@@ -246,8 +252,9 @@ void setup() {
   Serial2.begin(115200);   // ESP8266 TX→RX2(17), RX←TX2(16)
   WiFi.init(&Serial2);
   if (WiFi.status() == WL_NO_SHIELD) {
-    Serial.println(F("[WiFi] ESP8266 not found! Check wiring/baud."));
-    // Continue in failsafe rather than halting permanently
+    Serial.println(F("[WiFi] ESP8266 not found! Check wiring/baud/power."));
+    // Mark hardware as unavailable and continue in failsafe rather than halting permanently
+    wifiHardwareAvailable = false;
   } else {
     Serial.print(F("[WiFi] Connecting to "));
     Serial.println(WIFI_SSID);
@@ -576,6 +583,8 @@ bool shouldLogWifiDiag() {
 }
 
 bool ensureWiFiConnected() {
+  if (!wifiHardwareAvailable) return false;
+
   int status = WiFi.status();
   if (status == WL_CONNECTED) {
     if (lastWifiStatus != WL_CONNECTED) {
@@ -594,15 +603,15 @@ bool ensureWiFiConnected() {
     lastWifiStatus = status;
   }
 
-  unsigned long now = millis();
-  if (now < nextWifiReconnectMs) {
+  // Rate-limit reconnect attempts using interval arithmetic (handles millis() wrap).
+  if (millis() - lastWifiReconnectMs < WIFI_RECONNECT_INTERVAL_MS) {
     if (shouldLogWifiDiag()) {
       Serial.println(F("[WiFi] Not connected → waiting for reconnect window"));
     }
     return false;
   }
 
-  nextWifiReconnectMs = now + WIFI_RECONNECT_INTERVAL_MS;
+  lastWifiReconnectMs = millis();
   Serial.print(F("[WiFi] Reconnect attempt SSID="));
   Serial.println(WIFI_SSID);
   int beginStatus = WiFi.begin(WIFI_SSID, WIFI_PASS);
@@ -680,7 +689,7 @@ String fetchCommandFromServer() {
   wifiClient.print(STATS_PATH);
   wifiClient.println(F(" HTTP/1.0"));
   wifiClient.print(F("Host: "));
-  wifiClient.print(SERVER_HOST);
+  wifiClient.print(connectedHost);
   wifiClient.print(F(":"));
   wifiClient.println(SERVER_PORT);
   wifiClient.println(F("Connection: close"));
@@ -705,20 +714,32 @@ String fetchCommandFromServer() {
       Serial.print(F("[WiFi] HTTP status unexpected: "));
       Serial.println(statusLine);
     }
+    wifiClient.stop();
+    return "";
   }
 
-  // Read response body.
-  String body = "";
+  // Read response body into fixed buffer to avoid dynamic String fragmentation.
+  memset(httpBodyBuf, 0, sizeof(httpBodyBuf));
+  int bodyLen = 0;
   bool inBody = false;
+  char hdrBuf[4] = {0,0,0,0};
+
   while (wifiClient.connected() || wifiClient.available()) {
-    String line = wifiClient.readStringUntil('\n');
-    if (!inBody) {
-      if (line == "\r" || line.length() == 0) inBody = true;
-    } else {
-      body += line;
+    if (wifiClient.available()) {
+      char c = (char)wifiClient.read();
+      if (!inBody) {
+        hdrBuf[0] = hdrBuf[1]; hdrBuf[1] = hdrBuf[2]; hdrBuf[2] = hdrBuf[3]; hdrBuf[3] = c;
+        if (memcmp(hdrBuf, "\r\n\r\n", 4) == 0) inBody = true;
+      } else {
+        if (bodyLen < HTTP_BODY_BUF_SIZE - 1) {
+          httpBodyBuf[bodyLen++] = c;
+        }
+      }
     }
   }
   wifiClient.stop();
+
+  String body = String(httpBodyBuf);
 
   String cmd = parseJsonString(body, "command");
   if (cmd.length() == 0) {
@@ -913,7 +934,7 @@ void readPressureSensor() {
   if (pressure > PRESSURE_THRESHOLD) {
     if (!pressureOn) {
       pressureOn       = true;
-      pressureStartUs  = micros();
+      pressureStartMs  = millis();
 
       // Red-light violation: vehicle crosses stop line on red
       if (redIsOn) {
@@ -922,13 +943,13 @@ void readPressureSensor() {
       }
     }
     else {
-      pressureDuration = micros() - pressureStartUs;
+      pressureDuration = millis() - pressureStartMs;
       detect_jam();
     }
   }
   else {
     if (pressureOn) {
-      pressureDuration = micros() - pressureStartUs;
+      pressureDuration = millis() - pressureStartMs;
       pressureOn       = false;
       detect_jam();
     }
@@ -936,7 +957,7 @@ void readPressureSensor() {
 
   // Release jam cooling period after COOLING_PERIOD_DURATION µs
   if (coolingPeriod &&
-      (micros() - lastJamTimeUs > COOLING_PERIOD_DURATION)) {
+      (millis() - lastJamTimeMs > COOLING_PERIOD_DURATION_MS)) {
     coolingPeriod = false;
     Serial.println("[INFO] Jam cooling period ended.");
   }
@@ -944,10 +965,10 @@ void readPressureSensor() {
 
 void detect_jam(){
   // Traffic jam detection: vehicle sat stationary for too long
-  if (pressureDuration > JAM_DURATION_THRESHOLD &&
+  if (pressureDuration > JAM_DURATION_THRESHOLD_MS &&
       carCount         > CAR_COUNT_JAM_THRESHOLD) {
         jam            = true;
-        lastJamTimeUs  = micros();
+        lastJamTimeMs  = millis();
         coolingPeriod  = true;
         Serial.println("!! [JAM] Traffic jam detected (local log only).");
       }
@@ -991,14 +1012,6 @@ void checkRFID() {
   }
 
   if (emergencyActive) {
-    if (currentState == STATE_EMERGENCY_RED_HOLD &&
-        (millis() - emergencyStartTime > EMERGENCY_DURATION)) {
-      emergencyActive = false;
-      emergencyFromServer = false;
-      emergencyStartTime = 0;
-      Serial.println("[RFID] Emergency period ended — resuming normal cycle.");
-      switchState(STATE_PED_RED_WAIT);
-    }
     return;
   }
 
@@ -1121,6 +1134,15 @@ void runStateMachine() {
       // Hold a green corridor for emergency vehicles.
       setLights(0, 1, 0,  1, 0, 0);
       setCar2Lights(1, 0, 0);
+      // FSM-driven emergency timeout (handles server and RFID cases)
+      if (emergencyStartTime > 0 &&
+          (millis() - emergencyStartTime > EMERGENCY_DURATION)) {
+        emergencyActive    = false;
+        emergencyFromServer = false;
+        emergencyStartTime = 0;
+        Serial.println("[FSM] Emergency period ended — resuming normal cycle.");
+        switchState(STATE_PED_RED_WAIT);
+      }
       break;
   }
 }
@@ -1275,11 +1297,13 @@ void drawClosed() {
 }
 
 void writeEmergency() {
-  // text emergency
-  display.setTextSize(4);
+  // text emergency (smaller, fits display)
+  display.setTextSize(2);
   display.setTextColor(WHITE);
-  display.setCursor(0, 20);
-  display.println("EMERGENCY VEHICLES ONLY!");
+  display.setCursor(0, 10);
+  display.println("  EMERGENCY");
+  display.setCursor(0, 35);
+  display.println("  VEH ONLY");
 }
 #endif
 

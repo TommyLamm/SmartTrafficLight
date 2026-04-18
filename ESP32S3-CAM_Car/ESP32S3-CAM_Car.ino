@@ -8,15 +8,10 @@
 //    - Pressure / RFID sensors are now on Arduino Mega directly.
 //    - Violation capture still works via camera.
 //
-//  NOTE: Mega no longer receives UART from this ESP32.
-//        Mega polls server independently via ESP8266 WiFi.
+//  NOTE: Mega polls server independently via ESP8266 WiFi.
 // ============================================================
 
-// Sensors moved to Mega — disable on this ESP32
-#define ENABLE_PRESSURE_SENSOR 0
-#define ENABLE_RFID_SENSOR     0
-
-// Serial debug output (safe: ESP32-CAM TX is not connected to Mega any more)
+// Serial debug output (USB; TX not connected to Mega)
 #ifndef ENABLE_UART_DEBUG
 #define ENABLE_UART_DEBUG 1
 #endif
@@ -26,11 +21,6 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-#if ENABLE_RFID_SENSOR
-  #include <SPI.h>
-  #include <MFRC522.h>
-#endif
-
 // ─────────────────────── CREDENTIALS ────────────────────────
 const char *ssid     = "";
 const char *password = "";
@@ -38,12 +28,8 @@ const char *password = "";
 // ─────────────────────── SERVER ENDPOINTS ───────────────────
 const String serverName          = "http://stl.gyke.net/detect_car";
 const String violationServerName = "http://stl.gyke.net/capture_violation";
-const String emergencyTriggerUrl = "http://stl.gyke.net/trigger_emergency";
-const String emergencyClearUrl   = "http://stl.gyke.net/clear_emergency";
 const char* XOR_KEY              = "MyIoTKey2026";
 
-// Keep Mega UART clean: set to 1 only when you explicitly want debug logs
-// mixed into the Mega serial link.
 #if ENABLE_UART_DEBUG
   #define DBG_PRINT(...)   Serial.print(__VA_ARGS__)
   #define DBG_PRINTLN(...) Serial.println(__VA_ARGS__)
@@ -53,9 +39,6 @@ const char* XOR_KEY              = "MyIoTKey2026";
   #define DBG_PRINTLN(...) do {} while (0)
   #define DBG_PRINTF(...)  do {} while (0)
 #endif
-
-// sendMegaPacket() removed — Mega now polls server directly via ESP8266.
-// Commands are delivered through the /stats endpoint, not UART.
 
 // ─────────────────────── CAMERA PINS (AI Thinker ESP32-CAM) ─
 #define PWDN_GPIO_NUM   32
@@ -75,75 +58,24 @@ const char* XOR_KEY              = "MyIoTKey2026";
 #define HREF_GPIO_NUM   23
 #define PCLK_GPIO_NUM   22
 
-// Sensor pins removed — RFID and Pressure are now on Arduino Mega.
-
-// ─────────────────────── TIMING / THRESHOLDS ────────────────
+// ─────────────────────── TIMING ─────────────────────────────
 const int FRAME_INTERVAL     = 200;   // ms between normal detections
 const int VIOLATION_COOLDOWN = 2000;  // ms — debounce same trigger
 const int MAX_QUEUE          = 5;     // violation capture safety cap
-const unsigned long MEGA_FAILSAFE_TIMEOUT_MS = 5000UL;  // keep in sync with Mega FAILSAFE_TIMEOUT
-
-const int PRESSURE_THRESHOLD         = 60;          // 8-bit ADC counts (0-255)
-const unsigned long JAM_DURATION_US  = 60000000UL;  // 60 s
-const unsigned long JAM_COOLING_US   = 300000000UL; // 300 s
-const int CAR_COUNT_JAM_THRESHOLD    = 10;
-
-const unsigned long EMERGENCY_YELLOW_MS      = 3000UL;
-const unsigned long EMERGENCY_ALL_RED_MS     = 5000UL;
-const unsigned long EMERGENCY_RED_HOLD_MS    = 15000UL;
-const unsigned long LOCAL_EMERGENCY_TOTAL_MS = EMERGENCY_YELLOW_MS + EMERGENCY_ALL_RED_MS + EMERGENCY_RED_HOLD_MS;
-const unsigned long EMERGENCY_WEBHOOK_GAP_MS = 2000UL;
-
-// ─────────────────────── RFID UIDS ──────────────────────────
-#if ENABLE_RFID_SENSOR
-#define EMERGENCY_UID_1_B0 0xCC
-#define EMERGENCY_UID_1_B1 0x0E
-#define EMERGENCY_UID_1_B2 0x40
-#define EMERGENCY_UID_1_B3 0x18
-
-#define EMERGENCY_UID_2_B0 0xBA
-#define EMERGENCY_UID_2_B1 0x9C
-#define EMERGENCY_UID_2_B2 0xA9
-#define EMERGENCY_UID_2_B3 0x1A
-
-const byte EMERGENCY_UIDS[][4] = {
-  { EMERGENCY_UID_1_B0, EMERGENCY_UID_1_B1, EMERGENCY_UID_1_B2, EMERGENCY_UID_1_B3 },
-  { EMERGENCY_UID_2_B0, EMERGENCY_UID_2_B1, EMERGENCY_UID_2_B2, EMERGENCY_UID_2_B3 }
-};
-const int NUM_EMERGENCY_TAGS = sizeof(EMERGENCY_UIDS) / sizeof(EMERGENCY_UIDS[0]);
-MFRC522 rfid(RFID_SS_PIN, RFID_RST_PIN);
-#endif
 
 // ─────────────────────── STATE ──────────────────────────────
 WiFiClient wifiClient;
-unsigned long lastFrameTime = 0;
+unsigned long lastFrameTime     = 0;
 unsigned long lastViolationTime = 0;
-unsigned long lastEmergencyWebhookMs = 0;
 
 volatile int violationQueue = 0;
 int carsOnRoad = 0;
-
-bool assumeCarRed = false;  // inferred from latest non-KEEP command returned by server
-unsigned long lastControlPacketMs = 0;
-
-bool pressureOn = false;
-unsigned long pressureStartUs = 0;
-unsigned long pressureDurationUs = 0;
-bool jamDetected = false;
-bool jamCoolingPeriod = false;
-unsigned long lastJamTimeUs = 0;
-
-bool emergencyWebhookActive = false;
-bool localEmergencyActive = false;
-unsigned long localEmergencyStartMs = 0;
 
 // ============================================================
 //  SETUP
 // ============================================================
 void setup() {
-  Serial.begin(115200);  // USB debug (TX not connected to Mega)
-
-  // Sensors on Mega now — nothing to init here.
+  Serial.begin(115200);
 
   camera_config_t config;
   config.ledc_channel  = LEDC_CHANNEL_0;
@@ -219,8 +151,6 @@ void setup() {
 //  LOOP
 // ============================================================
 void loop() {
-  // Sensor polling removed (RFID + Pressure now on Mega).
-
   if (violationQueue > 0) {
     violationQueue--;
     DBG_PRINTF("DBG violation capture; queued=%d\n", violationQueue);
@@ -243,7 +173,7 @@ void loop() {
 }
 
 // ============================================================
-//  SECTION A — LOCAL SENSOR EVENT GENERATION
+//  VIOLATION CAPTURE
 // ============================================================
 void queueViolationCapture(const char* reason) {
   unsigned long now = millis();
@@ -261,139 +191,6 @@ void queueViolationCapture(const char* reason) {
   }
 }
 
-bool isEmergencyCommand(const char* cmd) {
-  return strcmp(cmd, "EMERGENCY_YELLOW") == 0
-      || strcmp(cmd, "EMERGENCY_ALL_RED") == 0
-      || strcmp(cmd, "EMERGENCY_RED") == 0
-      || strcmp(cmd, "EMERGENCY_CLEAR") == 0;
-}
-
-void updateCarSignalAssumption(const char* cmd) {
-  if (cmd == nullptr || cmd[0] == '\0') return;
-
-  if (strcmp(cmd, "CAR_GREEN") == 0) {
-    assumeCarRed = false;
-    return;
-  }
-
-  if (strncmp(cmd, "PED_GREEN_", 10) == 0 || isEmergencyCommand(cmd)) {
-    assumeCarRed = true;
-    return;
-  }
-}
-
-void detectJamFromPressure() {
-  if (pressureDurationUs > JAM_DURATION_US && carsOnRoad > CAR_COUNT_JAM_THRESHOLD) {
-    if (!jamCoolingPeriod) {
-      jamDetected = true;
-      jamCoolingPeriod = true;
-      lastJamTimeUs = micros();
-      DBG_PRINTLN("DBG jam detected by pressure hold.");
-    }
-  } else if (!jamCoolingPeriod) {
-    jamDetected = false;
-  }
-}
-
-bool hasFreshLightStateAssumption() {
-  return lastControlPacketMs > 0
-      && (millis() - lastControlPacketMs) <= MEGA_FAILSAFE_TIMEOUT_MS;
-}
-
-void pollPressureSensor() {
-#if !ENABLE_PRESSURE_SENSOR
-  return;
-#else
-  int pressure = analogRead(PRESSURE_PIN);
-  bool pressed = pressure > PRESSURE_THRESHOLD;
-
-  if (pressed) {
-    if (!pressureOn) {
-      pressureOn = true;
-      pressureStartUs = micros();
-      if (assumeCarRed && hasFreshLightStateAssumption()) {
-        queueViolationCapture("pressure/red");
-      }
-    } else {
-      pressureDurationUs = micros() - pressureStartUs;
-      detectJamFromPressure();
-    }
-  } else if (pressureOn) {
-    pressureDurationUs = micros() - pressureStartUs;
-    pressureOn = false;
-    detectJamFromPressure();
-  }
-
-  if (jamCoolingPeriod && (micros() - lastJamTimeUs > JAM_COOLING_US)) {
-    jamCoolingPeriod = false;
-    jamDetected = false;
-    DBG_PRINTLN("DBG jam cooling period ended.");
-  }
-#endif
-}
-
-bool isKnownEmergencyTag() {
-#if !ENABLE_RFID_SENSOR
-  return false;
-#else
-  if (rfid.uid.size < 4) return false;
-
-  for (int t = 0; t < NUM_EMERGENCY_TAGS; t++) {
-    bool match = true;
-    for (int b = 0; b < 4; b++) {
-      if (rfid.uid.uidByte[b] != EMERGENCY_UIDS[t][b]) {
-        match = false;
-        break;
-      }
-    }
-    if (match) return true;
-  }
-  return false;
-#endif
-}
-
-void pollRfidSensor() {
-#if !ENABLE_RFID_SENSOR
-  return;
-#else
-  if (!rfid.PICC_IsNewCardPresent()) return;
-  if (!rfid.PICC_ReadCardSerial()) return;
-
-  bool isEmergency = isKnownEmergencyTag();
-  if (isEmergency) {
-    if (!localEmergencyActive) {
-      DBG_PRINTLN("DBG RFID emergency detected.");
-      triggerEmergencyWebhook();
-      localEmergencyActive = true;
-      localEmergencyStartMs = millis();
-    }
-  } else {
-    DBG_PRINT("DBG unknown RFID tag: ");
-    for (byte i = 0; i < rfid.uid.size; i++) {
-      if (rfid.uid.uidByte[i] < 0x10) DBG_PRINT("0");
-      DBG_PRINT(rfid.uid.uidByte[i], HEX);
-      DBG_PRINT(" ");
-    }
-    DBG_PRINTLN("");
-  }
-
-  rfid.PICC_HaltA();
-  rfid.PCD_StopCrypto1();
-#endif
-}
-
-void refreshEmergencyHold() {
-  if (!localEmergencyActive) return;
-  if (millis() - localEmergencyStartMs <= LOCAL_EMERGENCY_TOTAL_MS) return;
-
-  localEmergencyActive = false;
-  DBG_PRINTLN("DBG emergency hold elapsed; clearing webhook.");
-  clearEmergencyWebhook();
-}
-
-// ============================================================
-//  SECTION B — VIOLATION CAPTURE
-// ============================================================
 void captureViolation() {
   if (WiFi.status() != WL_CONNECTED) {
     DBG_PRINTLN("DBG violation dropped; no WiFi");
@@ -441,7 +238,7 @@ void captureViolation() {
 }
 
 // ============================================================
-//  SECTION C — NORMAL DETECTION FRAME
+//  NORMAL DETECTION FRAME
 // ============================================================
 void sendDetectionFrame() {
   camera_fb_t *fb = esp_camera_fb_get();
@@ -472,7 +269,6 @@ void sendDetectionFrame() {
       if (carsTotal >= 0) {
         carsOnRoad = carsTotal;
       }
-      updateCarSignalAssumption(cmd);
 
       DBG_PRINT("{cars_total=");
       DBG_PRINT(carsTotal);
@@ -485,13 +281,9 @@ void sendDetectionFrame() {
       DBG_PRINT(tidalDirection);
       DBG_PRINT(", sample_window=");
       DBG_PRINT(sampleWindow);
-      DBG_PRINT(", car_red_assumed=");
-      DBG_PRINT(assumeCarRed ? "true" : "false");
       DBG_PRINTLN("}");
 
-      if (cmd) {
-        lastControlPacketMs = millis();
-      }
+      (void)cmd;  // command is consumed by the server; logged above if needed
     }
   } else {
     wifiClient.stop();
@@ -520,35 +312,4 @@ void restoreNormalCameraSettings() {
     s->set_quality(s, 12);
     s->set_contrast(s, 1);
   }
-}
-
-void postEmergencyEvent(const String& url, const char* payload) {
-  if (WiFi.status() != WL_CONNECTED) return;
-
-  HTTPClient http;
-  http.setReuse(false);
-  http.setTimeout(2000);
-  http.begin(wifiClient, url);
-  http.addHeader("Content-Type", "application/json");
-  int code = http.POST(payload);
-  if (code <= 0) {
-    wifiClient.stop();
-  }
-  http.end();
-}
-
-void triggerEmergencyWebhook() {
-  unsigned long now = millis();
-  if (emergencyWebhookActive || (now - lastEmergencyWebhookMs < EMERGENCY_WEBHOOK_GAP_MS)) {
-    return;
-  }
-  emergencyWebhookActive = true;
-  lastEmergencyWebhookMs = now;
-  postEmergencyEvent(emergencyTriggerUrl, "{}");
-}
-
-void clearEmergencyWebhook() {
-  emergencyWebhookActive = false;
-  lastEmergencyWebhookMs = millis();
-  postEmergencyEvent(emergencyClearUrl, "{}");
 }
