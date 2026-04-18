@@ -132,7 +132,7 @@ bool wifiHardwareAvailable = true;
 #define PED_BLINK_DURATION  4000UL
 #define PED_RED_WAIT_DUR    2000UL
 #define FAILSAFE_CAR_GREEN 30000UL  // car green time when no AI signal
-#define SERVER_LANE_BUCKETS 3
+#define SERVER_LANE_BUCKETS 2
 
 // ─────────────────────────── RFID UIDs ──────────────────────
 // Replace these with your real 4-byte emergency tag UIDs.
@@ -227,7 +227,7 @@ bool forceCarGreenWithYellow = false;
 // Car count: updated from /stats ("cars" or "cars_total")
 int carCount = 0;
 // Extra /stats analytics (aligned with ESP32 /detect_car response fields)
-int serverLaneCounts[SERVER_LANE_BUCKETS] = {0, 0, 0};
+int serverLaneCounts[SERVER_LANE_BUCKETS] = {0, 0};
 String serverTidalDirection = "UNKNOWN";
 int serverSampleWindow = 0;
 String serverControlMode = "AUTO";
@@ -758,7 +758,7 @@ String fetchCommandFromServer() {
     carCount = (int)carsTotal;
   }
 
-  int parsedLaneCounts[SERVER_LANE_BUCKETS] = {0, 0, 0};
+  int parsedLaneCounts[SERVER_LANE_BUCKETS] = {0, 0};
   int parsedLaneCount = parseJsonIntArray(body, "lane_counts", parsedLaneCounts, SERVER_LANE_BUCKETS);
   if (parsedLaneCount > 0) {
     for (int i = 0; i < SERVER_LANE_BUCKETS; i++) {
@@ -875,7 +875,7 @@ bool parseJsonBool(const String& json, const String& key, bool fallback) {
   return fallback;
 }
 
-// Extract a JSON integer array value by key (e.g. "lane_counts":[1,2,3]).
+// Extract a JSON integer array value by key (e.g. "lane_counts":[1,2]).
 // Returns number of parsed integers, up to maxCount.
 int parseJsonIntArray(const String& json, const String& key, int* out, int maxCount) {
   if (out == nullptr || maxCount <= 0) return 0;

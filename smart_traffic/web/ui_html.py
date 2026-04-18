@@ -75,8 +75,7 @@ INDEX_HTML = """
                 stroke-width: 2.5;
                 filter: drop-shadow(0px 0px 3px rgba(0,0,0,0.8));
             }
-            #laneLine1 { stroke: #38bdf8; }
-            #laneLine2 { stroke: #f43f5e; }
+            #laneSplitLine { stroke: #38bdf8; }
             .lane-tuning-container {
                 margin-top: 15px;
                 background-color: rgba(15, 23, 42, 0.4);
@@ -113,15 +112,14 @@ INDEX_HTML = """
                 transition: transform 0.2s ease;
             }
             details:not([open]) > .lane-tuning-header::after { transform: rotate(-90deg); }
-            .lane-slider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+            .lane-slider-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
             .lane-slider-col { display: flex; flex-direction: column; }
             .lane-slider-title { font-size: 0.8rem; font-weight: bold; margin-bottom: 8px; }
             .lane-slider-item { display: flex; flex-direction: column; gap: 5px; }
             .lane-slider-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #94a3b8; font-weight: 500;}
             .lane-slider-head span:last-child { color: #f8fafc; font-variant-numeric: tabular-nums; background: #334155; padding: 2px 6px; border-radius: 4px;}
             .lane-slider-item input[type="range"] { width: 100%; margin: 0; }
-            .left-boundary-slider input[type="range"] { accent-color: #38bdf8; }
-            .right-boundary-slider input[type="range"] { accent-color: #f43f5e; }
+            .split-boundary-slider input[type="range"] { accent-color: #38bdf8; }
             .lane-boundary-status { margin-top: 12px; font-size: 0.75rem; color: #94a3b8; min-height: 1.2em; text-align: right;}
 
             .side-panels {
@@ -527,33 +525,21 @@ INDEX_HTML = """
                             <div class="placeholder">Car Detection Stream</div>
                             <img id="streamImgCar" alt="" style="display:none;">
                             <svg id="laneOverlay" class="lane-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                <line id="laneLine1" x1="43" y1="0" x2="33" y2="100"></line>
-                                <line id="laneLine2" x1="57" y1="0" x2="66" y2="100"></line>
+                                <line id="laneSplitLine" x1="50" y1="0" x2="49.5" y2="100"></line>
                             </svg>
                         </div>
                         <details class="lane-tuning-container">
                             <summary class="lane-tuning-header">Lane Boundaries Tuning</summary>
                             <div class="lane-slider-grid">
                                 <div class="lane-slider-col">
-                                    <div class="lane-slider-title" style="color: #38bdf8;">Left Line</div>
-                                    <div class="lane-slider-item left-boundary-slider">
-                                        <div class="lane-slider-head"><span>Top</span><span id="val-b1-top">0.430</span></div>
-                                        <input id="slider-b1-top" type="range" min="0.05" max="0.95" step="0.001">
+                                    <div class="lane-slider-title" style="color: #38bdf8;">Split Line</div>
+                                    <div class="lane-slider-item split-boundary-slider">
+                                        <div class="lane-slider-head"><span>Top</span><span id="val-b-top">0.500</span></div>
+                                        <input id="slider-b-top" type="range" min="0.05" max="0.95" step="0.001">
                                     </div>
-                                    <div class="lane-slider-item left-boundary-slider" style="margin-top: 10px;">
-                                        <div class="lane-slider-head"><span>Bottom</span><span id="val-b1-bottom">0.330</span></div>
-                                        <input id="slider-b1-bottom" type="range" min="0.05" max="0.95" step="0.001">
-                                    </div>
-                                </div>
-                                <div class="lane-slider-col">
-                                    <div class="lane-slider-title" style="color: #f43f5e;">Right Line</div>
-                                    <div class="lane-slider-item right-boundary-slider">
-                                        <div class="lane-slider-head"><span>Top</span><span id="val-b2-top">0.570</span></div>
-                                        <input id="slider-b2-top" type="range" min="0.05" max="0.95" step="0.001">
-                                    </div>
-                                    <div class="lane-slider-item right-boundary-slider" style="margin-top: 10px;">
-                                        <div class="lane-slider-head"><span>Bottom</span><span id="val-b2-bottom">0.660</span></div>
-                                        <input id="slider-b2-bottom" type="range" min="0.05" max="0.95" step="0.001">
+                                    <div class="lane-slider-item split-boundary-slider" style="margin-top: 10px;">
+                                        <div class="lane-slider-head"><span>Bottom</span><span id="val-b-bottom">0.495</span></div>
+                                        <input id="slider-b-bottom" type="range" min="0.05" max="0.95" step="0.001">
                                     </div>
                                 </div>
                             </div>
@@ -673,8 +659,7 @@ INDEX_HTML = """
         <script>
             // ===== LANE BOUNDARIES =====
             let laneBoundaries = {
-                boundary1_top: 0.43, boundary1_bottom: 0.33,
-                boundary2_top: 0.57, boundary2_bottom: 0.66,
+                boundary_top: 0.5, boundary_bottom: 0.495,
                 revision: 0, updated_at_ms: 0
             };
             let laneBoundaryPostTimer = null;
@@ -690,18 +675,29 @@ INDEX_HTML = """
                 el.style.color = isError ? '#f87171' : '#94a3b8';
             }
 
+            function normalizeLaneBoundaries(input) {
+                const source = input || {};
+                const fallbackTop = laneBoundaries.boundary_top;
+                const fallbackBottom = laneBoundaries.boundary_bottom;
+                const rawTop = source.boundary_top ?? source.boundary1_top ?? fallbackTop;
+                const rawBottom = source.boundary_bottom ?? source.boundary1_bottom ?? fallbackBottom;
+                const parsedTop = Number(rawTop);
+                const parsedBottom = Number(rawBottom);
+                return {
+                    boundary_top: Number.isFinite(parsedTop) ? parsedTop : fallbackTop,
+                    boundary_bottom: Number.isFinite(parsedBottom) ? parsedBottom : fallbackBottom,
+                    revision: Number(source.revision || 0),
+                    updated_at_ms: Number(source.updated_at_ms || 0),
+                };
+            }
+
             function applyLaneOverlay(boundaries) {
-                const line1 = document.getElementById('laneLine1');
-                const line2 = document.getElementById('laneLine2');
-                if (!line1 || !line2) return;
-                line1.setAttribute('x1', boundaries.boundary1_top * 100);
-                line1.setAttribute('y1', 0);
-                line1.setAttribute('x2', boundaries.boundary1_bottom * 100);
-                line1.setAttribute('y2', 100);
-                line2.setAttribute('x1', boundaries.boundary2_top * 100);
-                line2.setAttribute('y1', 0);
-                line2.setAttribute('x2', boundaries.boundary2_bottom * 100);
-                line2.setAttribute('y2', 100);
+                const splitLine = document.getElementById('laneSplitLine');
+                if (!splitLine) return;
+                splitLine.setAttribute('x1', boundaries.boundary_top * 100);
+                splitLine.setAttribute('y1', 0);
+                splitLine.setAttribute('x2', boundaries.boundary_bottom * 100);
+                splitLine.setAttribute('y2', 100);
             }
 
             function nowMs() { return Date.now(); }
@@ -718,10 +714,8 @@ INDEX_HTML = """
 
             function syncSliderUI(boundaries) {
                 const mappings = [
-                    ['boundary1_top', 'slider-b1-top', 'val-b1-top'],
-                    ['boundary1_bottom', 'slider-b1-bottom', 'val-b1-bottom'],
-                    ['boundary2_top', 'slider-b2-top', 'val-b2-top'],
-                    ['boundary2_bottom', 'slider-b2-bottom', 'val-b2-bottom']
+                    ['boundary_top', 'slider-b-top', 'val-b-top'],
+                    ['boundary_bottom', 'slider-b-bottom', 'val-b-bottom']
                 ];
                 mappings.forEach(([key, sliderId, valueId]) => {
                     const slider = document.getElementById(sliderId);
@@ -734,18 +728,18 @@ INDEX_HTML = """
 
             function currentSliderBoundaries() {
                 return {
-                    boundary1_top: Number(document.getElementById('slider-b1-top').value),
-                    boundary1_bottom: Number(document.getElementById('slider-b1-bottom').value),
-                    boundary2_top: Number(document.getElementById('slider-b2-top').value),
-                    boundary2_bottom: Number(document.getElementById('slider-b2-bottom').value)
+                    boundary_top: Number(document.getElementById('slider-b-top').value),
+                    boundary_bottom: Number(document.getElementById('slider-b-bottom').value)
                 };
             }
 
             function validateBoundaries(boundaries) {
-                if (boundaries.boundary1_top >= boundaries.boundary2_top)
-                    return 'Boundary 1 Top 必須小於 Boundary 2 Top';
-                if (boundaries.boundary1_bottom >= boundaries.boundary2_bottom)
-                    return 'Boundary 1 Bottom 必須小於 Boundary 2 Bottom';
+                if (!Number.isFinite(boundaries.boundary_top) || !Number.isFinite(boundaries.boundary_bottom))
+                    return 'Boundary 值格式錯誤';
+                if (boundaries.boundary_top < 0 || boundaries.boundary_top > 1)
+                    return 'Boundary Top 必須介於 0 和 1';
+                if (boundaries.boundary_bottom < 0 || boundaries.boundary_bottom > 1)
+                    return 'Boundary Bottom 必須介於 0 和 1';
                 return null;
             }
 
@@ -760,7 +754,7 @@ INDEX_HTML = """
                 .then(r => r.json())
                 .then(data => {
                     if (!data.success) { setLaneBoundaryStatus(data.error || '更新失敗', true); return; }
-                    laneBoundaries = data.lane_boundaries;
+                    laneBoundaries = normalizeLaneBoundaries(data.lane_boundaries);
                     syncSliderUI(laneBoundaries);
                     setLaneBoundaryStatus('Boundary 已套用（即時）');
                 })
@@ -776,7 +770,7 @@ INDEX_HTML = """
             }
 
             function bindLaneBoundarySliders() {
-                ['slider-b1-top', 'slider-b1-bottom', 'slider-b2-top', 'slider-b2-bottom'].forEach(id => {
+                ['slider-b-top', 'slider-b-bottom'].forEach(id => {
                     const el = document.getElementById(id);
                     if (el) el.addEventListener('input', scheduleLaneBoundaryUpdate);
                 });
@@ -786,9 +780,9 @@ INDEX_HTML = """
                 fetch(`/lane_boundaries?t=${Date.now()}`, { cache: 'no-store' })
                     .then(r => r.json())
                     .then(data => {
-                        laneBoundaries = data;
+                        laneBoundaries = normalizeLaneBoundaries(data);
                         syncSliderUI(laneBoundaries);
-                        setLaneBoundaryStatus(`Boundary 已載入（rev ${data.revision || 0}）`);
+                        setLaneBoundaryStatus(`Boundary 已載入（rev ${laneBoundaries.revision || 0}）`);
                     })
                     .catch(() => {
                         syncSliderUI(laneBoundaries);
@@ -800,13 +794,14 @@ INDEX_HTML = """
                 fetch(`/lane_boundaries?t=${Date.now()}`, { cache: 'no-store' })
                     .then(r => r.json())
                     .then(data => {
-                        if (!data || typeof data.revision !== 'number') return;
-                        const isNewer = isBoundaryStateNewer(data, laneBoundaries);
+                        if (!data) return;
+                        const normalized = normalizeLaneBoundaries(data);
+                        const isNewer = isBoundaryStateNewer(normalized, laneBoundaries);
                         const isDragging = nowMs() < laneBoundaryDraggingUntil;
                         if (isNewer && !isDragging) {
-                            laneBoundaries = data;
+                            laneBoundaries = normalized;
                             syncSliderUI(laneBoundaries);
-                            setLaneBoundaryStatus(`Boundary 已同步（rev ${data.revision}）`);
+                            setLaneBoundaryStatus(`Boundary 已同步（rev ${laneBoundaries.revision}）`);
                         }
                     })
                     .catch(() => {});

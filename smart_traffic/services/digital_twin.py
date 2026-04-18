@@ -6,6 +6,8 @@ import logic
 
 import smart_traffic.state as state
 
+from ..config import CAR_LANE_REGION_COUNT
+
 
 _CAPTURE_MIN_INTERVAL_MS = 120
 _MIN_FRAMES = 60
@@ -44,10 +46,10 @@ def _coerce_max_frames(value):
 
 def _normalize_lane_counts(value):
     if isinstance(value, (list, tuple)):
-        lane = [_safe_int(v, 0) for v in list(value)[:3]]
+        lane = [_safe_int(v, 0) for v in list(value)[:CAR_LANE_REGION_COUNT]]
     else:
         lane = []
-    while len(lane) < 3:
+    while len(lane) < CAR_LANE_REGION_COUNT:
         lane.append(0)
     return lane
 

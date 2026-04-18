@@ -13,15 +13,14 @@ STREAM_ONLINE_TTL_SEC = 5.0
 CAR_TARGET_CLASSES = [2, 3, 5, 7]
 EDITOR_URL = (os.environ.get("STL_EDITOR_URL") or "https://stledit.gyke.net/").strip()
 
-CAR_LANE_REGION_COUNT = 3
+CAR_LANE_REGION_COUNT = 2
 TIDAL_SAMPLE_WINDOW = 12
 TIDAL_BIAS_MARGIN = 1.0
 
-# Perspective-aware lane boundaries for 3-lane split.
-LANE_BOUNDARY1_TOP_RATIO = 0.43
-LANE_BOUNDARY1_BOTTOM_RATIO = 0.33
-LANE_BOUNDARY2_TOP_RATIO = 0.57
-LANE_BOUNDARY2_BOTTOM_RATIO = 0.66
+# Perspective-aware split boundary for 2-lane split.
+# These defaults are the midpoint between the previous two-line boundaries.
+LANE_SPLIT_TOP_RATIO = 0.50
+LANE_SPLIT_BOTTOM_RATIO = 0.495
 
 # Licence-plate OCR — max unique plates kept in sys_state["plates"]
 PLATE_HISTORY_MAXLEN = 50

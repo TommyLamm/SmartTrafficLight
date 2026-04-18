@@ -9,10 +9,8 @@ from collections import deque
 
 from .config import (
     CAR_LANE_REGION_COUNT,
-    LANE_BOUNDARY1_BOTTOM_RATIO,
-    LANE_BOUNDARY1_TOP_RATIO,
-    LANE_BOUNDARY2_BOTTOM_RATIO,
-    LANE_BOUNDARY2_TOP_RATIO,
+    LANE_SPLIT_BOTTOM_RATIO,
+    LANE_SPLIT_TOP_RATIO,
     STREAM_ONLINE_TTL_SEC,
     TIDAL_SAMPLE_WINDOW,
 )
@@ -60,14 +58,12 @@ sys_state = {
     "digital_twin_last_frame_ts_ms": None,
 }
 
-# ── lane-boundary state (unchanged from original) ────────────────────────────
+# ── lane-boundary state (2-lane split line) ──────────────────────────────────
 lane_sample_window = deque(maxlen=TIDAL_SAMPLE_WINDOW)
 lane_boundary_lock = threading.Lock()
 lane_boundaries = {
-    "boundary1_top": float(LANE_BOUNDARY1_TOP_RATIO),
-    "boundary1_bottom": float(LANE_BOUNDARY1_BOTTOM_RATIO),
-    "boundary2_top": float(LANE_BOUNDARY2_TOP_RATIO),
-    "boundary2_bottom": float(LANE_BOUNDARY2_BOTTOM_RATIO),
+    "boundary_top": float(LANE_SPLIT_TOP_RATIO),
+    "boundary_bottom": float(LANE_SPLIT_BOTTOM_RATIO),
 }
 lane_boundaries_revision = 1
 lane_boundaries_updated_at_ms = int(time.time() * 1000)
@@ -99,25 +95,29 @@ def is_plate_stream_online(ttl_sec=STREAM_ONLINE_TTL_SEC):     # ← NEW
     return is_stream_online(latest_frame_ts_plate, ttl_sec)
 
 
-# ── lane-boundary helpers (identical to original) ────────────────────────────
+# ── lane-boundary helpers ─────────────────────────────────────────────────────
 def _validate_boundary_payload(payload):
-    keys = ("boundary1_top", "boundary1_bottom", "boundary2_top", "boundary2_bottom")
+    # Backward compatibility: accept legacy boundary1_* payload and map to 2-lane keys.
+    aliases = {
+        "boundary_top": ("boundary_top", "boundary1_top"),
+        "boundary_bottom": ("boundary_bottom", "boundary1_bottom"),
+    }
     parsed = {}
-    for key in keys:
-        if key not in payload:
-            raise ValueError(f"Missing lane boundary key: {key}")
+    for canonical_key, candidates in aliases.items():
+        raw_value = None
+        for candidate in candidates:
+            if candidate in payload:
+                raw_value = payload[candidate]
+                break
+        if raw_value is None:
+            raise ValueError(f"Missing lane boundary key: {canonical_key}")
         try:
-            value = float(payload[key])
+            value = float(raw_value)
         except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid lane boundary value for {key}") from exc
+            raise ValueError(f"Invalid lane boundary value for {canonical_key}") from exc
         if value < 0.0 or value > 1.0:
-            raise ValueError(f"Lane boundary value out of range for {key}")
-        parsed[key] = value
-
-    if parsed["boundary1_top"] >= parsed["boundary2_top"]:
-        raise ValueError("boundary1_top must be smaller than boundary2_top")
-    if parsed["boundary1_bottom"] >= parsed["boundary2_bottom"]:
-        raise ValueError("boundary1_bottom must be smaller than boundary2_bottom")
+            raise ValueError(f"Lane boundary value out of range for {canonical_key}")
+        parsed[canonical_key] = value
 
     try:
         revision = int(payload.get("revision", 1))
@@ -189,9 +189,10 @@ def _refresh_lane_boundaries_from_disk_locked():
     )
     if not is_newer:
         return
-    lane_boundaries.update({k: disk_payload[k] for k in
-                             ("boundary1_top", "boundary1_bottom",
-                              "boundary2_top", "boundary2_bottom")})
+    lane_boundaries.update({
+        "boundary_top": disk_payload["boundary_top"],
+        "boundary_bottom": disk_payload["boundary_bottom"],
+    })
     lane_boundaries_revision = disk_payload["revision"]
     lane_boundaries_updated_at_ms = disk_payload["updated_at_ms"]
 
@@ -210,7 +211,11 @@ def set_lane_boundaries(new_values):
     global lane_boundaries_revision, lane_boundaries_updated_at_ms
     with lane_boundary_lock:
         _refresh_lane_boundaries_from_disk_locked()
-        lane_boundaries.update(new_values)
+        validated = _validate_boundary_payload({**lane_boundaries, **new_values})
+        lane_boundaries.update({
+            "boundary_top": validated["boundary_top"],
+            "boundary_bottom": validated["boundary_bottom"],
+        })
         lane_boundaries_revision += 1
         current_ms = int(time.time() * 1000)
         lane_boundaries_updated_at_ms = max(current_ms, lane_boundaries_updated_at_ms + 1)

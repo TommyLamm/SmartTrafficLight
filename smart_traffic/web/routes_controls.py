@@ -4,6 +4,7 @@ import re
 from flask import Blueprint, jsonify, request, send_from_directory
 
 import smart_traffic.state as state
+from smart_traffic.config import CAR_LANE_REGION_COUNT
 from smart_traffic.services.control import (
     apply_manual_command,
     clear_emergency,
@@ -36,17 +37,17 @@ def _build_mega_stats_payload():
     except (TypeError, ValueError):
         cars_total = 0
 
-    raw_lane_counts = state.sys_state.get("lane_counts", [0, 0, 0])
+    raw_lane_counts = state.sys_state.get("lane_counts", [0] * CAR_LANE_REGION_COUNT)
     if not isinstance(raw_lane_counts, (list, tuple)):
-        raw_lane_counts = [0, 0, 0]
+        raw_lane_counts = [0] * CAR_LANE_REGION_COUNT
 
     lane_counts = []
-    for value in list(raw_lane_counts)[:3]:
+    for value in list(raw_lane_counts)[:CAR_LANE_REGION_COUNT]:
         try:
             lane_counts.append(int(value))
         except (TypeError, ValueError):
             lane_counts.append(0)
-    while len(lane_counts) < 3:
+    while len(lane_counts) < CAR_LANE_REGION_COUNT:
         lane_counts.append(0)
 
     tidal_direction = str(state.sys_state.get("tidal_direction", "BALANCED") or "BALANCED")
@@ -196,8 +197,13 @@ def lane_boundaries():
     return _json_no_cache(state.get_lane_boundaries())
 
 
-def _parse_ratio(payload, key):
+def _parse_ratio(payload, key, fallback_keys=()):
     value = payload.get(key)
+    if value is None:
+        for fallback_key in fallback_keys:
+            value = payload.get(fallback_key)
+            if value is not None:
+                break
     if value is None:
         raise ValueError(f"Missing field: {key}")
     try:
@@ -213,29 +219,14 @@ def _parse_ratio(payload, key):
 def set_lane_boundaries():
     payload = request.json or {}
     try:
-        b1_top = _parse_ratio(payload, "boundary1_top")
-        b1_bottom = _parse_ratio(payload, "boundary1_bottom")
-        b2_top = _parse_ratio(payload, "boundary2_top")
-        b2_bottom = _parse_ratio(payload, "boundary2_bottom")
+        boundary_top = _parse_ratio(payload, "boundary_top", fallback_keys=("boundary1_top",))
+        boundary_bottom = _parse_ratio(payload, "boundary_bottom", fallback_keys=("boundary1_bottom",))
     except ValueError as e:
         return _json_no_cache({"success": False, "error": str(e)}, status=400)
 
-    if b1_top >= b2_top:
-        return _json_no_cache(
-            {"success": False, "error": "boundary1_top must be smaller than boundary2_top"},
-            status=400,
-        )
-    if b1_bottom >= b2_bottom:
-        return _json_no_cache(
-            {"success": False, "error": "boundary1_bottom must be smaller than boundary2_bottom"},
-            status=400,
-        )
-
     updated = {
-        "boundary1_top": b1_top,
-        "boundary1_bottom": b1_bottom,
-        "boundary2_top": b2_top,
-        "boundary2_bottom": b2_bottom,
+        "boundary_top": boundary_top,
+        "boundary_bottom": boundary_bottom,
     }
     state.set_lane_boundaries(updated)
     return _json_no_cache({"success": True, "lane_boundaries": state.get_lane_boundaries()})

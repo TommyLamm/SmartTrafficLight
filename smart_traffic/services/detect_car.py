@@ -36,26 +36,20 @@ def _boundary_x(top_ratio, bottom_ratio, y, image_width, image_height):
 
 def _bucket_lane(bottom_center_x, bottom_center_y, image_width, image_height, boundaries):
     if image_width <= 0 or image_height <= 0:
-        return CAR_LANE_REGION_COUNT // 2
-    boundary1_x = _boundary_x(
-        boundaries["boundary1_top"],
-        boundaries["boundary1_bottom"],
-        bottom_center_y,
-        image_width,
-        image_height,
-    )
-    boundary2_x = _boundary_x(
-        boundaries["boundary2_top"],
-        boundaries["boundary2_bottom"],
-        bottom_center_y,
-        image_width,
-        image_height,
-    )
-    if bottom_center_x < boundary1_x:
         return 0
-    if bottom_center_x < boundary2_x:
-        return 1
-    return 2
+
+    boundary_top = float(boundaries.get("boundary_top", boundaries.get("boundary1_top", 0.5)))
+    boundary_bottom = float(boundaries.get("boundary_bottom", boundaries.get("boundary1_bottom", 0.5)))
+    split_x = _boundary_x(
+        boundary_top,
+        boundary_bottom,
+        bottom_center_y,
+        image_width,
+        image_height,
+    )
+    if bottom_center_x < split_x:
+        return 0
+    return CAR_LANE_REGION_COUNT - 1
 
 
 def _compute_tidal_direction():
