@@ -10,7 +10,7 @@
 ---
 
 This project uses YOLOv8 to detect vehicles, pedestrians, and wheelchair users in real time, and dynamically determines traffic signal commands.  
-The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `logic.py` algorithm editor.
+The system also includes license-plate OCR, violation capture, lane-boundary tuning, a Digital Twin sandbox, and a hot-reloadable `logic.py` algorithm editor.
 
 ---
 
@@ -29,13 +29,20 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 
 ## System Overview
 
-- **Dual-Stream AI Detection**
+- **Multi-Stream AI Detection**
   - Vehicle stream: `/detect_car`
   - Pedestrian/wheelchair stream: `/detect_person`
+  - Plate OCR stream: `/detect_plate`
 - **Signal Control Strategy**
   - Wheelchair priority (can trigger `PED_GREEN_30`)
   - Pedestrian volume triggers short/long crossing green lights
   - Switches to `CAR_GREEN` when vehicle traffic is dominant
+  - Supports emergency 3-phase sequence (`EMERGENCY_YELLOW -> EMERGENCY_ALL_RED -> EMERGENCY_RED`)
+- **Traffic Analytics & Operations**
+  - Two-lane directional analytics (`lane_counts`, `tidal_direction`)
+  - Adjustable lane split boundary via `/lane_boundaries`
+  - Violation capture records with image browsing (`/capture_violation`, `/violations`)
+  - Rolling license-plate history (`/plates`)
 - **Control Modes**
   - `AUTO`: Automatic decision-making via `logic.py`
   - `MANUAL`: Dashboard commands are latched and kept in `/stats` until changed or mode switches
@@ -50,7 +57,7 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 
 `ArduinoMega/ArduinoMega.ino` manages the physical signal light state machine and failsafe:
 
-- Polls `GET /stats` through an ESP8266 AT module (`Serial2`, pins 16/17) and consumes `command`
+- Polls `GET /stats?client=mega` through an ESP8266 AT module (`Serial2`, pins 16/17) and consumes compact control payloads
 - Mirrors backend control mode in serial status (`[AI-Smart]` / `[MANUAL]`), with `[Failsafe]` taking priority
 - Controls state transitions for vehicle and pedestrian RGB lights
 - Reads local sensors on Mega: pressure (`A0`), RFID (SPI, `SS=53`, `RST=49`), illuminance (`A1`)
@@ -79,7 +86,7 @@ The system provides a web dashboard, AUTO/MANUAL modes, and a hot-reloadable `lo
 
 - Runs stock AT firmware (no project-specific firmware flashing required)
 - Connected to Mega `Serial2` and used via `WiFiEsp`
-- Provides Mega's network path to poll backend `/stats` and keep command heartbeat alive
+- Provides Mega's network path to poll backend `/stats?client=mega` and keep command heartbeat alive
 
 **Mega `/stats` polling troubleshooting**
 - In `ArduinoMega/ArduinoMega.ino`, set `WIFI_SSID` / `WIFI_PASS` correctly before flashing.
@@ -99,20 +106,22 @@ SmartTrafficLight/
 ├── core.py
 ├── yolov8n.pt
 ├── person_wheelchair_personWheelchairV2.pt
+├── license_plate.pt
 ├── ArduinoMega/
 │   └── ArduinoMega.ino
-├── ESP8266.ino
-├── ESP8266_WiFi_Bridge/
-│   └── ESP8266_WiFi_Bridge.ino
 ├── ESP32S3-CAM_Car/
 │   └── ESP32S3-CAM_Car.ino
 ├── ESP32S3-CAM_Person/
 │   └── ESP32S3-CAM_Person.ino
+├── simulate_car_stream.py
+├── test_plate.py
 └── smart_traffic/
+    ├── __init__.py
     ├── config.py
     ├── models.py
     ├── state.py
     ├── services/
+    ├── violations/
     └── web/
 ```
 
@@ -128,7 +137,13 @@ SmartTrafficLight/
 ### Install Dependencies
 
 ```bash
-pip install flask waitress ultralytics opencv-python pillow numpy
+pip install flask waitress ultralytics opencv-python pillow numpy requests
+```
+
+Optional (required for plate OCR / violation OCR features):
+
+```bash
+pip install paddleocr paddlepaddle
 ```
 
 ### Model Files
@@ -137,6 +152,7 @@ Place the model files in the project root directory:
 
 - `yolov8n.pt` (vehicle detection)
 - `person_wheelchair_personWheelchairV2.pt` (pedestrian/wheelchair detection)
+- `license_plate.pt` (license-plate detection)
 
 ### Start the Server
 
@@ -150,6 +166,11 @@ Once running:
 - Algorithm editor: `http://127.0.0.1:5001`
 - Optional (dashboard Edit button target): set env `STL_EDITOR_URL` (default: `https://stledit.gyke.net/`)
 
+Notes:
+
+- `app.py` starts `logic_editor.py` automatically if present.
+- If PaddleOCR is not installed, `/detect_plate` and `/capture_violation` plate OCR paths will return runtime errors.
+
 ---
 
 ## API Endpoints
@@ -158,14 +179,19 @@ Once running:
 
 - `POST /detect_person` — Upload pedestrian/wheelchair frames (`application/octet-stream`)
 - `POST /detect_car` — Upload vehicle frames
+- `POST /detect_plate` — Upload frames for plate detection + OCR
+- `POST /capture_violation` — Upload HD violation snapshots (stores image + metadata)
 - `POST /detect_all` — Legacy compatibility (currently redirects to the pedestrian pipeline)
+- `GET /plates` — Rolling history of plate OCR results
 
 ### Streams & Status
 
 - `GET /video_feed_person` — Pedestrian video stream
 - `GET /video_feed_car` — Vehicle video stream
+- `GET /stream_plate` — Plate-annotated MJPEG stream
 - `GET /video_feed` — Legacy compatibility (pedestrian stream)
-- `GET /stats` — Returns system status (includes `mode`, `command`, `cars_total`, `lane_counts`, `tidal_direction`, `sample_window`, `stream_*_online`)
+- `GET /stats` — Returns full system status (includes `mode`, `command`, `cars_total`, `lane_counts`, `tidal_direction`, `sample_window`, `stream_*_online`, `lane_boundaries`, `plates_count`, Digital Twin flags)
+- `GET /stats?client=mega` — Compact payload for Arduino Mega polling
 
 ### Control
 
@@ -176,6 +202,14 @@ Once running:
 - `POST /toggle_wheelchair_priority` — Enable/disable adaptive wheelchair timing
 - `POST /trigger_emergency` — Start emergency 3-phase state (`YELLOW -> ALL_RED -> HOLD`)
 - `POST /clear_emergency` — Clear emergency state and resume normal logic
+- `GET /lane_boundaries` — Get current two-lane split boundary (`boundary_top`, `boundary_bottom`, revision metadata)
+- `POST /lane_boundaries` — Update lane split boundary ratios
+- `GET /violations` — List captured violation records
+- `GET /violation_image/<filename>` — Fetch a stored violation image
+
+### Editor
+
+- `GET /get_code` — Read current `logic.py`
 - `POST /save_code` — Save and hot-reload `logic.py`
 
 ---
@@ -245,17 +279,21 @@ curl -X POST http://127.0.0.1:5000/digital_twin/compare -H 'Content-Type: applic
 Notes:
 - `simulate_car_stream.py` uses the same XOR key (`MyIoTKey2026`) and `application/octet-stream` transport as ESP32.
 - Use `--resize-width` and lower `--fps` if your machine is overloaded.
+- Use `--keep-mode` if you do not want the simulator to force `AUTO` mode at startup.
+- Use `--no-ensure-detection` if you do not want the simulator to auto-enable detection.
 
 ---
 
 ## Basic Data Flow
 
 1. ESP32-CAM nodes (car/person) capture frames, obfuscate them via XOR, and upload to Flask APIs.
-2. The server decodes frames, runs inference, and updates global traffic state (`command`, counts, lane data).
-3. Arduino Mega polls backend `/stats` through ESP8266 (AT + `WiFiEsp`) to fetch latest `command`.
-4. Mega parses `command` plus car count (`cars_total`, fallback `cars`) and updates local FSM context.
-5. Mega executes physical signal switching and local sensor logic (RFID/pressure/illuminance/OLED).
-6. If backend command flow is lost, Mega enters failsafe timing sequence.
+2. The server decodes frames, runs inference, and updates global traffic state (`command`, counts, lane data, stream online flags).
+3. Plate and violation pipelines run YOLO + OCR and persist rolling metadata/images (`/plates`, `/violations`).
+4. Dashboard users can tune lane boundaries (`boundary_top`, `boundary_bottom`) for 2-lane split analytics.
+5. Arduino Mega polls backend `/stats?client=mega` through ESP8266 (AT + `WiFiEsp`) to fetch compact control payloads.
+6. Mega parses `command`, `cars_total`, lane metrics, and mode/emergency flags, then updates local FSM context.
+7. Mega executes physical signal switching and local sensor logic (RFID/pressure/illuminance/OLED).
+8. If backend command flow is lost, Mega enters failsafe timing sequence.
 
 ---
 
