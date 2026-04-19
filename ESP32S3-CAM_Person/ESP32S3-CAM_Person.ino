@@ -2,8 +2,8 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
-const char *ssid = "";
-const char *password = "";
+const char *ssid = "Team2";
+const char *password = "ee3070team2";
 const String serverName = "http://stl.gyke.net/detect_person";
 const char* XOR_KEY = "MyIoTKey2026";
 
