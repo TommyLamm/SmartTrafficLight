@@ -43,7 +43,7 @@
 #endif
 
 #ifndef ENABLE_ILLUMINANCE_SENSOR
-#define ENABLE_ILLUMINANCE_SENSOR 0
+#define ENABLE_ILLUMINANCE_SENSOR 1
 #endif
 
 #ifndef ENFORCE_RFID_UID_GATE
@@ -85,8 +85,10 @@ static const char STATS_PATH[] =
 #define WIFI_DIAG_INTERVAL_MS 2000UL
 
 WiFiEspClient wifiClient;
-// HTTP body buffer to avoid dynamic String heap fragmentation
-#define HTTP_BODY_BUF_SIZE 512
+// HTTP body buffer to avoid dynamic String heap fragmentation.
+// Sized to tolerate full /stats payloads (when compact client payload is
+// unavailable) so late keys like "tidal_direction" are still parsable.
+#define HTTP_BODY_BUF_SIZE 1536
 static char httpBodyBuf[HTTP_BODY_BUF_SIZE];
 
 unsigned long lastPollMs = 0;
@@ -555,6 +557,28 @@ void processEsp32Command(const String &cmd) {
 
 // ── WiFi polling (replaces handleSerial1) ───────────────────
 
+bool isLaneCommand(const String &cmd) {
+  return cmd == "LANE_STRAIGHT" || cmd == "LANE_LEFT" || cmd == "LANE_RIGHT" ||
+         cmd == "LANE_LEFT_STRAIGHT" || cmd == "LANE_RIGHT_STRAIGHT" ||
+         cmd == "LANE_LEFT_RIGHT" || cmd == "LANE_ALL" ||
+         cmd == "LANE_CLOSED" || cmd == "LANE_EMERGENCY";
+}
+
+void applyTidalDirectionToLane(const String &tidalDirection) {
+  String normalized = tidalDirection;
+  normalized.trim();
+  normalized.toUpperCase();
+
+  if (normalized == "LEFT_BIAS" || normalized == "LEFT") {
+    setLane(LANE_LEFT);
+  } else if (normalized == "RIGHT_BIAS" || normalized == "RIGHT") {
+    setLane(LANE_RIGHT);
+  } else if (normalized == "BALANCED" || normalized == "CENTER" ||
+             normalized == "STRAIGHT") {
+    setLane(LANE_STRAIGHT);
+  }
+}
+
 // Poll server every POLL_INTERVAL_MS and dispatch the command.
 void pollServer() {
   if (millis() - lastPollMs < POLL_INTERVAL_MS)
@@ -575,6 +599,12 @@ void pollServer() {
 
   // Dispatch the same way as if it arrived on Serial1.
   processEsp32Command(cmd);
+
+  // In AUTO mode, derive OLED lane hint from tidal_direction when no explicit
+  // lane command is provided.
+  if (!isLaneCommand(cmd) && serverControlMode == "AUTO" && !emergencyActive) {
+    applyTidalDirectionToLane(serverTidalDirection);
+  }
 }
 
 const char *wifiStatusName(int status) {
@@ -744,6 +774,7 @@ String fetchCommandFromServer() {
   // Read response body into fixed buffer to avoid dynamic String fragmentation.
   memset(httpBodyBuf, 0, sizeof(httpBodyBuf));
   int bodyLen = 0;
+  bool bodyTruncated = false;
   bool inBody = false;
   char hdrBuf[4] = {0, 0, 0, 0};
 
@@ -760,11 +791,19 @@ String fetchCommandFromServer() {
       } else {
         if (bodyLen < HTTP_BODY_BUF_SIZE - 1) {
           httpBodyBuf[bodyLen++] = c;
+        } else {
+          bodyTruncated = true;
         }
       }
     }
   }
   wifiClient.stop();
+
+  if (bodyTruncated && shouldLogWifiDiag()) {
+    Serial.print(F("[WiFi] HTTP body truncated at "));
+    Serial.print(HTTP_BODY_BUF_SIZE - 1);
+    Serial.println(F(" bytes"));
+  }
 
   String body = String(httpBodyBuf);
 
@@ -796,6 +835,12 @@ String fetchCommandFromServer() {
 
   String tidalDirection = parseJsonString(body, "tidal_direction");
   if (tidalDirection.length() > 0) {
+    tidalDirection.trim();
+    tidalDirection.toUpperCase();
+    if (tidalDirection != serverTidalDirection) {
+      Serial.print(F(">> [WiFi] Tidal direction: "));
+      Serial.println(tidalDirection);
+    }
     serverTidalDirection = tidalDirection;
   }
 
@@ -854,31 +899,45 @@ String fetchCommandFromServer() {
   return cmd;
 }
 
+// Find the first non-whitespace character of a JSON value by key.
+int findJsonValueStart(const String &json, const String &key) {
+  String needle = "\"" + key + "\"";
+  int keyPos = json.indexOf(needle);
+  if (keyPos == -1)
+    return -1;
+
+  int colonPos = json.indexOf(':', keyPos + needle.length());
+  if (colonPos == -1)
+    return -1;
+
+  int valuePos = colonPos + 1;
+  while (valuePos < json.length()) {
+    char c = json[valuePos];
+    if (c == ' ' || c == '\t' || c == '\r' || c == '\n') {
+      valuePos++;
+      continue;
+    }
+    break;
+  }
+
+  return (valuePos < json.length()) ? valuePos : -1;
+}
+
 // Extract a JSON string value by key (no JSON library needed).
 String parseJsonString(const String &json, const String &key) {
-  String needle = "\"" + key + "\":\"";
-  int idx = json.indexOf(needle);
-  if (idx == -1) {
-    needle = "\"" + key + "\": \"";
-    idx = json.indexOf(needle);
-  }
-  if (idx == -1)
+  int start = findJsonValueStart(json, key);
+  if (start == -1 || json[start] != '"')
     return "";
-  int start = idx + needle.length();
+  start++;
   int end = json.indexOf('"', start);
   return (end == -1) ? "" : json.substring(start, end);
 }
 
 // Extract a JSON integer value by key.
 long parseJsonLong(const String &json, const String &key, long fallback) {
-  String needle = "\"" + key + "\":";
-  int idx = json.indexOf(needle);
-  if (idx == -1)
+  int start = findJsonValueStart(json, key);
+  if (start == -1)
     return fallback;
-
-  int start = idx + needle.length();
-  while (start < json.length() && json[start] == ' ')
-    start++;
 
   bool negative = false;
   if (start < json.length() && json[start] == '-') {
@@ -897,20 +956,14 @@ long parseJsonLong(const String &json, const String &key, long fallback) {
 }
 
 bool parseJsonBool(const String &json, const String &key, bool fallback) {
-  String needle = "\"" + key + "\":";
-  int idx = json.indexOf(needle);
-  if (idx == -1)
+  int start = findJsonValueStart(json, key);
+  if (start == -1)
     return fallback;
 
-  int start = idx + needle.length();
-  while (start < json.length() && json[start] == ' ')
-    start++;
-  if (start >= json.length())
-    return fallback;
-
-  if (json.substring(start, start + 4) == "true")
+  if (start + 4 <= json.length() && json.substring(start, start + 4) == "true")
     return true;
-  if (json.substring(start, start + 5) == "false")
+  if (start + 5 <= json.length() &&
+      json.substring(start, start + 5) == "false")
     return false;
   return fallback;
 }
@@ -922,14 +975,10 @@ int parseJsonIntArray(const String &json, const String &key, int *out,
   if (out == nullptr || maxCount <= 0)
     return 0;
 
-  String needle = "\"" + key + "\":";
-  int idx = json.indexOf(needle);
-  if (idx == -1)
+  int start = findJsonValueStart(json, key);
+  if (start == -1 || json[start] != '[')
     return 0;
 
-  int start = json.indexOf('[', idx + needle.length());
-  if (start == -1)
-    return 0;
   int end = json.indexOf(']', start + 1);
   if (end == -1)
     return 0;
