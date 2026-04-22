@@ -77,6 +77,8 @@ static const char SERVER_FALLBACK_HOST[] = "";
 static const int SERVER_PORT = 80; // HTTP port for domain endpoint
 static const char STATS_PATH[] =
     "/stats?client=mega"; // GET endpoint (compact payload)
+static const char CAPTURE_VIOLATION_LIVE_PATH[] =
+  "/capture_violation_live?source=mega_pressure";
 
 // Poll interval must be < FAILSAFE_TIMEOUT (5000 ms)
 #define POLL_INTERVAL_MS 2000UL
@@ -1257,12 +1259,56 @@ void runStateMachine() {
 }
 
 // ============================================================
-//  SECTION F — RED-LIGHT VIOLATION ALERT (legacy local path)
-//  Mega no longer uplinks events to ESP32; this remains a log hook
-//  when ENABLE_PRESSURE_SENSOR is enabled for local diagnostics.
+//  SECTION F — RED-LIGHT VIOLATION ALERT
+//  On local pressure-sensor red-light violations, request the server to
+//  snapshot the latest live car frame and append a violation record so
+//  the web dashboard "Captured Violations" panel updates automatically.
 // ============================================================
 void triggerViolationAlert() {
   Serial.println("[ALERT] Local red-light violation detected.");
+
+  if (!ensureWiFiConnected()) {
+    Serial.println(F("[ALERT] Capture skipped: WiFi not connected"));
+    return;
+  }
+
+  const char *connectedHost = nullptr;
+  if (!connectStatsSocket(connectedHost)) {
+    Serial.println(F("[ALERT] Capture skipped: cannot reach server"));
+    return;
+  }
+
+  wifiClient.print(F("POST "));
+  wifiClient.print(CAPTURE_VIOLATION_LIVE_PATH);
+  wifiClient.println(F(" HTTP/1.0"));
+  wifiClient.print(F("Host: "));
+  wifiClient.print(connectedHost);
+  wifiClient.print(F(":"));
+  wifiClient.println(SERVER_PORT);
+  wifiClient.println(F("Content-Length: 0"));
+  wifiClient.println(F("Connection: close"));
+  wifiClient.println();
+
+  unsigned long t0 = millis();
+  while (!wifiClient.available()) {
+    if (millis() - t0 > WIFI_HTTP_TIMEOUT_MS) {
+      Serial.println(F("[ALERT] Capture request timeout"));
+      wifiClient.stop();
+      return;
+    }
+  }
+
+  String statusLine = wifiClient.readStringUntil('\n');
+  statusLine.trim();
+  if (statusLine.startsWith("HTTP/1.0 200") ||
+      statusLine.startsWith("HTTP/1.1 200")) {
+    Serial.println(F("[ALERT] Violation capture triggered on server"));
+  } else {
+    Serial.print(F("[ALERT] Capture request failed: "));
+    Serial.println(statusLine);
+  }
+
+  wifiClient.stop();
 }
 
 // ============================================================

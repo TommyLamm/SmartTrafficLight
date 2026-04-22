@@ -6,7 +6,10 @@ import smart_traffic.state as state
 from ..services.detect_car import process_car_data
 from ..services.detect_person import process_legacy_detect_all, process_person_data
 from ..services.detect_plate import process_plate_data          # ← NEW
-from ..services.detect_violation import process_violation_data
+from ..services.detect_violation import (
+    process_violation_data,
+    process_violation_jpeg_data,
+)
 
 
 bp_detect = Blueprint("detect", __name__)
@@ -20,6 +23,25 @@ def capture_violation():
         if not request.data:
             return jsonify({"error": "No Data"}), 400
         return jsonify(process_violation_data(request.data)), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@bp_detect.route('/capture_violation_live', methods=['POST'])
+def capture_violation_live():
+    """
+    Trigger a violation capture using the latest live /detect_car frame.
+    Intended for Mega pressure-sensor alerts where no camera bytes are sent.
+    """
+    try:
+        with state.frame_condition_car:
+            frame = state.latest_frame_car
+
+        if not frame:
+            return jsonify({"error": "No live car frame available"}), 503
+
+        source = str(request.args.get("source", "mega_pressure") or "mega_pressure")
+        return jsonify(process_violation_jpeg_data(frame, source=source)), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
