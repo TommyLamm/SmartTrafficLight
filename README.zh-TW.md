@@ -17,6 +17,7 @@
 ## 目錄
 
 - [系統概述](#系統概述)
+- [執行預設值（程式碼核對）](#執行預設值程式碼核對)
 - [硬體角色說明（Mega、ESP32-CAM、ESP8266）](#硬體角色說明megaesp32-camesp8266)
 - [專案結構](#專案結構)
 - [安裝與啟動](#安裝與啟動)
@@ -34,7 +35,7 @@
   - 行人/輪椅端：`/detect_person`
   - 車牌 OCR 串流：`/detect_plate`
 - **號誌控制策略**
-  - 輪椅優先（可觸發 `PED_GREEN_30`）
+  - 輪椅優先（依需求自適應 `PED_GREEN_10..60`）
   - 行人流量觸發短/長過街綠燈
   - 車流為主時切換 `CAR_GREEN`
   - 支援 emergency 三階段序列（`EMERGENCY_YELLOW -> EMERGENCY_ALL_RED -> EMERGENCY_RED`）
@@ -45,9 +46,37 @@
   - 車牌 OCR 滾動歷史（`/plates`）
 - **控制模式**
   - `AUTO`：依 `logic.py` 自動決策
-  - `MANUAL`：介面手動指令會鎖定保留於 `/stats`，直到下次手動覆寫或切換模式
+  - `MANUAL`：介面手動指令會鎖定保留於 `/stats`（僅允許 `CAR_GREEN` 或 `PED_GREEN_5..120`），直到下次手動覆寫或切換模式
 - **熱重載**
   - 編輯 `logic.py` 後可透過 `/save_code` 即時套用，不需重啟主服務
+
+---
+
+## 執行預設值（程式碼核對）
+
+- **Mega 輪詢與 failsafe 時序**
+  - Mega 每 2 秒輪詢一次 `GET /stats?client=mega`（`POLL_INTERVAL_MS=2000`）
+  - 若 9 秒內未收到有效 heartbeat/control packet，Mega 進入 failsafe（`FAILSAFE_TIMEOUT=9000`）
+  - failsafe 下車流綠燈保底週期為 30 秒（`FAILSAFE_CAR_GREEN=30000`）
+- **Digital Twin 限制**
+  - `POST /digital_twin/start` 的 `max_frames` 範圍為 `60..5000`（預設 `900`）
+  - 快照最小擷取間隔為 `120ms`
+  - `POST /digital_twin/compare` 需要至少 15 幀錄製資料
+- **Emergency 三階段時序**
+  - `EMERGENCY_YELLOW`：3 秒
+  - `EMERGENCY_ALL_RED`：5 秒
+  - `EMERGENCY_RED` 持有：15 秒
+- **手動覆寫規格**
+  - `POST /manual_override` 僅在 `MANUAL` 模式可用
+  - 合法指令為 `CAR_GREEN` 與 `PED_GREEN_<sec>`（`sec` 範圍 `5..120`）
+- **歷史資料保留上限**
+  - 車牌 OCR 歷史最多保留 50 筆（`/plates`）
+  - 違規紀錄最多保留 100 筆（`/violations`）
+- **Stats 回傳說明**
+  - `GET /stats` 僅提供 `plates_count`，不直接回傳完整 `plates`；完整資料請使用 `GET /plates`
+- **車道邊界相容鍵位**
+  - `POST /lane_boundaries` 同時支援新鍵位（`boundary_top`、`boundary_bottom`）與舊鍵位（`boundary1_top`、`boundary1_bottom`）
+  - 預設分割值為 `boundary_top=0.50`、`boundary_bottom=0.495`
 
 ---
 
@@ -58,6 +87,7 @@
 `ArduinoMega/ArduinoMega.ino` 負責實體號誌燈狀態機與 failsafe：
 
 - 透過 ESP8266（AT 韌體，`Serial2`）輪詢 `GET /stats?client=mega` 並解析精簡控制 payload
+- 輪詢週期為 2 秒；若 9 秒未收到有效 heartbeat/control packet 會進入 failsafe
 - 序列埠除錯狀態會同步後端控制模式（`[AI-Smart]` / `[MANUAL]`），且 `[Failsafe]` 仍為最高優先顯示
 - 控制車道與行人 RGB 燈的狀態切換
 - 由 Mega 本地讀取感測器：壓力（`A0`）、RFID（SPI，`SS=53`、`RST=49`）、照度（`A1`）
@@ -78,7 +108,7 @@
 
 - 擷取相機影像並以同樣 XOR 方式混淆
 - 上傳到 `POST /detect_car`
-- 觸發違規擷取上傳（`/capture_violation`）
+- 韌體支援違規擷取上傳（`/capture_violation`）
 - 目前韌體已停用此節點上的壓力 / RFID 本地流程（改回 Mega）
 - 不再透過 UART 轉發控制指令到 Mega
 
@@ -181,6 +211,7 @@ python app.py
 - `POST /detect_car`：車流影像上傳
 - `POST /detect_plate`：上傳影像進行車牌偵測 + OCR
 - `POST /capture_violation`：上傳高解析違規快照（儲存影像與紀錄）
+- `POST /capture_violation_live`：以最新車流串流畫面觸發違規擷取（不需重新上傳影像）
 - `POST /detect_all`：相容舊版（目前導向行人流程）
 - `GET /plates`：車牌 OCR 滾動歷史
 
@@ -190,17 +221,17 @@ python app.py
 - `GET /video_feed_car`：車流串流
 - `GET /stream_plate`：車牌標註 MJPEG 串流
 - `GET /video_feed`：相容舊版（行人串流）
-- `GET /stats`：回傳完整系統狀態（含 `mode`、`command`、`cars_total`、`lane_counts`、`tidal_direction`、`sample_window`、`stream_*_online`、`lane_boundaries`、`plates_count`、Digital Twin 旗標）
+- `GET /stats`：回傳完整系統狀態（含 `mode`、`command`、`cars_total`、`lane_counts`、`tidal_direction`、`sample_window`、`stream_*_online`、`lane_boundaries`、`plates_count`、Digital Twin 旗標；完整車牌清單請改查 `/plates`）
 - `GET /stats?client=mega`：Arduino Mega 輪詢用精簡 payload
 
 ### 控制相關
 
 - `POST /set_mode`：切換 `AUTO` / `MANUAL`
-- `POST /manual_override`：手動送出號誌指令
+- `POST /manual_override`：手動送出號誌指令（僅 `MANUAL` 可用；合法值為 `CAR_GREEN`、`PED_GREEN_5..120`）
 - `POST /toggle_detection`：切換 AI 偵測開關
 - `POST /toggle_emergency`：啟用/停用 emergency 優先功能（停用後 Mega 會忽略 RFID/伺服器 emergency 觸發）
 - `POST /toggle_wheelchair_priority`：啟用/停用輪椅自適應綠燈秒數
-- `POST /trigger_emergency`：啟動 emergency 三階段狀態（`YELLOW -> ALL_RED -> HOLD`）
+- `POST /trigger_emergency`：啟動 emergency 三階段狀態（`YELLOW(3s) -> ALL_RED(5s) -> HOLD(15s)`）
 - `POST /clear_emergency`：清除 emergency 狀態並回復一般邏輯
 - `GET /lane_boundaries`：取得目前雙車道分割邊界（`boundary_top`、`boundary_bottom`、revision 資訊）
 - `POST /lane_boundaries`：更新車道分割邊界比例
@@ -216,13 +247,13 @@ python app.py
 
 ### Digital Twin MVP
 
-- `POST /digital_twin/start`：開始錄製即時交通快照（JSON 可帶 `max_frames`）
+- `POST /digital_twin/start`：開始錄製即時交通快照（JSON 可帶 `max_frames`，範圍 `60..5000`，預設 `900`）
 - `POST /digital_twin/stop`：停止錄製
 - `POST /digital_twin/clear`：清空錄製快照
 - `GET /digital_twin/session`：查詢目前錄製狀態
 - `GET /digital_twin/frames`：取得原始快照資料（支援 `?limit=200`）
 - `GET /digital_twin/playback`：取得時間軸回放資料（支援 `?limit=600`）
-- `POST /digital_twin/compare`：What-if 策略比較（`baseline`、`pedestrian_first`、`vehicle_first`、`balanced_flow`）
+- `POST /digital_twin/compare`：What-if 策略比較（`baseline`、`pedestrian_first`、`vehicle_first`、`balanced_flow`；需至少 15 幀錄製資料）
 
 ---
 
