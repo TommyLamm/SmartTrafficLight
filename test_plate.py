@@ -5,7 +5,7 @@ from pathlib import Path
 XOR_KEY = b"MyIoTKey2026"
 
 def main():
-    image_path = Path(__file__).resolve().parent / "test_material" / "下載.jpg"
+    image_path = Path(__file__).resolve().parent / "test_material" / "sample.jpg"
 
     # Load any JPEG image and XOR-obfuscate it
     with image_path.open("rb") as f:

@@ -68,9 +68,11 @@
 #include "WiFiEsp.h"
 
 // !! CHANGE BEFORE FLASHING !!
-static const char WIFI_SSID[] = "Team2";
-static const char WIFI_PASS[] = "ee3070team2";
-static const char SERVER_HOST[] = "stl.gyke.net"; // server hostname or IP
+// Fill in your WiFi network name and password.
+static const char WIFI_SSID[] = "YOUR_WIFI_SSID";
+static const char WIFI_PASS[] = "YOUR_WIFI_PASSWORD";
+// Set to the hostname or IP where the Flask backend is running.
+static const char SERVER_HOST[] = "YOUR_SERVER_HOST";
 // Optional fallback endpoint (typically fixed backend IP). Leave empty to
 // disable.
 static const char SERVER_FALLBACK_HOST[] = "";

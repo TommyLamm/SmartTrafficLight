@@ -22,12 +22,14 @@
 #include <WiFi.h>
 
 // ─────────────────────── CREDENTIALS ────────────────────────
-const char *ssid = "Team2";
-const char *password = "ee3070team2";
+// Fill in your WiFi network name and password before flashing.
+const char *ssid = "YOUR_WIFI_SSID";
+const char *password = "YOUR_WIFI_PASSWORD";
 
 // ─────────────────────── SERVER ENDPOINTS ───────────────────
-const String serverName = "http://stl.gyke.net/detect_car";
-const String violationServerName = "http://stl.gyke.net/capture_violation";
+// Replace with the hostname or IP where the Flask backend is running.
+const String serverName = "http://YOUR_SERVER_HOST/detect_car";
+const String violationServerName = "http://YOUR_SERVER_HOST/capture_violation";
 const char *XOR_KEY = "MyIoTKey2026";
 
 #if ENABLE_UART_DEBUG

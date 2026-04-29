@@ -94,17 +94,17 @@ The system also includes license-plate OCR, violation capture, lane-boundary tun
 - Runs emergency/failsafe logic locally (including emergency-clear translation when server command returns to non-emergency)
 - Enters a failsafe loop if no valid server heartbeat/command is received within timeout
 
-### 2) ESP32S3-CAM_Person (Pedestrian/Wheelchair Node)
+### 2) ESP32-CAM_Person (Pedestrian/Wheelchair Node)
 
-`ESP32S3-CAM_Person/ESP32S3-CAM_Person.ino`:
+`ESP32-CAM_Person/ESP32-CAM_Person.ino`:
 
 - Captures camera frames and obfuscates them via XOR (`MyIoTKey2026`)
 - Uploads frames to `POST /detect_person`
 - Does not control Mega directly over UART in the current architecture
 
-### 3) ESP32S3-CAM_Car (Vehicle Node)
+### 3) ESP32-CAM_Car (Vehicle Node)
 
-`ESP32S3-CAM_Car/ESP32S3-CAM_Car.ino`:
+`ESP32-CAM_Car/ESP32-CAM_Car.ino`:
 
 - Captures camera frames and obfuscates them using the same XOR method
 - Uploads frames to `POST /detect_car`
@@ -120,7 +120,7 @@ The system also includes license-plate OCR, violation capture, lane-boundary tun
 
 **Mega `/stats` polling troubleshooting**
 - In `ArduinoMega/ArduinoMega.ino`, set `WIFI_SSID` / `WIFI_PASS` correctly before flashing.
-- Keep `SERVER_HOST="stl.gyke.net"` for normal operation; set `SERVER_FALLBACK_HOST` only when you need a fixed-IP fallback route.
+- Keep `SERVER_HOST="example.com"` for normal operation; set `SERVER_FALLBACK_HOST` only when you need a fixed-IP fallback route.
 - If serial logs show repeated `Not connected` or `Connect failed`, verify ESP8266 AT firmware, 3.3V power stability, and that TCP `:80` to backend is reachable from the same WiFi.
 - New firmware diagnostics separate link state, TCP connect failure, HTTP timeout, and JSON parse failure to make root-cause isolation faster.
 
@@ -139,10 +139,10 @@ SmartTrafficLight/
 ├── license_plate.pt
 ├── ArduinoMega/
 │   └── ArduinoMega.ino
-├── ESP32S3-CAM_Car/
-│   └── ESP32S3-CAM_Car.ino
-├── ESP32S3-CAM_Person/
-│   └── ESP32S3-CAM_Person.ino
+├── ESP32-CAM_Car/
+│   └── ESP32-CAM_Car.ino
+├── ESP32-CAM_Person/
+│   └── ESP32-CAM_Person.ino
 ├── simulate_car_stream.py
 ├── test_plate.py
 └── smart_traffic/
@@ -194,7 +194,7 @@ Once running:
 
 - Main dashboard: `http://127.0.0.1:5000`
 - Algorithm editor: `http://127.0.0.1:5001`
-- Optional (dashboard Edit button target): set env `STL_EDITOR_URL` (default: `https://stledit.gyke.net/`)
+- Optional (dashboard Edit button target): set env `STL_EDITOR_URL` (default: `https://example.com/`)
 
 Notes:
 

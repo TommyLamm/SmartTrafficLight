@@ -2,9 +2,12 @@
 #include <WiFi.h>
 #include <HTTPClient.h>
 
-const char *ssid = "Team2";
-const char *password = "ee3070team2";
-const String serverName = "http://stl.gyke.net/detect_person";
+// Fill in your WiFi network name and password before flashing.
+const char *ssid = "YOUR_WIFI_SSID";
+const char *password = "YOUR_WIFI_PASSWORD";
+
+// Replace with the hostname or IP where the Flask backend is running.
+const String serverName = "http://YOUR_SERVER_HOST/detect_person";
 const char* XOR_KEY = "MyIoTKey2026";
 
 // ─────────────────────── CAMERA PINS (AI Thinker ESP32-CAM) ─

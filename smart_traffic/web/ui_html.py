@@ -735,11 +735,11 @@ INDEX_HTML = """
 
             function validateBoundaries(boundaries) {
                 if (!Number.isFinite(boundaries.boundary_top) || !Number.isFinite(boundaries.boundary_bottom))
-                    return 'Boundary 值格式錯誤';
+                    return 'Invalid boundary value format';
                 if (boundaries.boundary_top < 0 || boundaries.boundary_top > 1)
-                    return 'Boundary Top 必須介於 0 和 1';
+                    return 'Boundary Top must be between 0 and 1';
                 if (boundaries.boundary_bottom < 0 || boundaries.boundary_bottom > 1)
-                    return 'Boundary Bottom 必須介於 0 和 1';
+                    return 'Boundary Bottom must be between 0 and 1';
                 return null;
             }
 
@@ -753,12 +753,12 @@ INDEX_HTML = """
                 })
                 .then(r => r.json())
                 .then(data => {
-                    if (!data.success) { setLaneBoundaryStatus(data.error || '更新失敗', true); return; }
+                    if (!data.success) { setLaneBoundaryStatus(data.error || 'Update failed', true); return; }
                     laneBoundaries = normalizeLaneBoundaries(data.lane_boundaries);
                     syncSliderUI(laneBoundaries);
-                    setLaneBoundaryStatus('Boundary 已套用（即時）');
+                    setLaneBoundaryStatus('Boundary applied (live)');
                 })
-                .catch(() => setLaneBoundaryStatus('網路錯誤，更新失敗', true));
+                .catch(() => setLaneBoundaryStatus('Network error, update failed', true));
             }
 
             function scheduleLaneBoundaryUpdate() {
@@ -782,11 +782,11 @@ INDEX_HTML = """
                     .then(data => {
                         laneBoundaries = normalizeLaneBoundaries(data);
                         syncSliderUI(laneBoundaries);
-                        setLaneBoundaryStatus(`Boundary 已載入（rev ${laneBoundaries.revision || 0}）`);
+                        setLaneBoundaryStatus(`Boundary loaded (rev ${laneBoundaries.revision || 0})`);
                     })
                     .catch(() => {
                         syncSliderUI(laneBoundaries);
-                        setLaneBoundaryStatus('Boundary 載入失敗，使用預設值', true);
+                        setLaneBoundaryStatus('Boundary load failed, using defaults', true);
                     });
             }
 
@@ -801,7 +801,7 @@ INDEX_HTML = """
                         if (isNewer && !isDragging) {
                             laneBoundaries = normalized;
                             syncSliderUI(laneBoundaries);
-                            setLaneBoundaryStatus(`Boundary 已同步（rev ${laneBoundaries.revision}）`);
+                            setLaneBoundaryStatus(`Boundary synced (rev ${laneBoundaries.revision})`);
                         }
                     })
                     .catch(() => {});
@@ -1116,7 +1116,7 @@ INDEX_HTML = """
                             if (!isDragging && isBoundaryStateNewer(data.lane_boundaries, laneBoundaries)) {
                                 laneBoundaries = data.lane_boundaries;
                                 syncSliderUI(laneBoundaries);
-                                setLaneBoundaryStatus(`Boundary 已同步（rev ${laneBoundaries.revision}）`);
+                                setLaneBoundaryStatus(`Boundary synced (rev ${laneBoundaries.revision})`);
                             }
                         }
 

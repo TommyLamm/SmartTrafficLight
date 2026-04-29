@@ -94,17 +94,17 @@
 - 在 Mega 端執行 emergency / failsafe 邏輯（含 server 回到非 emergency 時的清除轉譯）
 - 若超過逾時未收到有效 server 心跳/指令，進入 failsafe 循環（預設安全時序）
 
-### 2) ESP32S3-CAM_Person（行人/輪椅節點）
+### 2) ESP32-CAM_Person（行人/輪椅節點）
 
-`ESP32S3-CAM_Person/ESP32S3-CAM_Person.ino`：
+`ESP32-CAM_Person/ESP32-CAM_Person.ino`：
 
 - 擷取相機影像並以 XOR（`MyIoTKey2026`）混淆
 - 上傳到 `POST /detect_person`
 - 目前架構下不再透過 UART 直接控制 Arduino Mega
 
-### 3) ESP32S3-CAM_Car（車流節點）
+### 3) ESP32-CAM_Car（車流節點）
 
-`ESP32S3-CAM_Car/ESP32S3-CAM_Car.ino`：
+`ESP32-CAM_Car/ESP32-CAM_Car.ino`：
 
 - 擷取相機影像並以同樣 XOR 方式混淆
 - 上傳到 `POST /detect_car`
@@ -120,7 +120,7 @@
 
 **Mega `/stats` 輪詢故障排除**
 - 燒錄前請先在 `ArduinoMega/ArduinoMega.ino` 正確設定 `WIFI_SSID` / `WIFI_PASS`。
-- 一般情況維持 `SERVER_HOST="stl.gyke.net"`；只有在需要固定 IP 備援路徑時才設定 `SERVER_FALLBACK_HOST`。
+- 一般情況維持 `SERVER_HOST="example.com"`；只有在需要固定 IP 備援路徑時才設定 `SERVER_FALLBACK_HOST`。
 - 若序列埠持續出現 `Not connected` 或 `Connect failed`，請優先檢查 ESP8266 AT 韌體、3.3V 供電穩定性，以及同一個 WiFi 下是否可連到後端 `:80`。
 - 新版韌體診斷會分開顯示 link state、TCP connect、HTTP timeout、JSON parse 失敗，方便快速定位根因。
 
@@ -139,10 +139,10 @@ SmartTrafficLight/
 ├── license_plate.pt
 ├── ArduinoMega/
 │   └── ArduinoMega.ino
-├── ESP32S3-CAM_Car/
-│   └── ESP32S3-CAM_Car.ino
-├── ESP32S3-CAM_Person/
-│   └── ESP32S3-CAM_Person.ino
+├── ESP32-CAM_Car/
+│   └── ESP32-CAM_Car.ino
+├── ESP32-CAM_Person/
+│   └── ESP32-CAM_Person.ino
 ├── simulate_car_stream.py
 ├── test_plate.py
 └── smart_traffic/
@@ -194,7 +194,7 @@ python app.py
 
 - 主儀表板：`http://127.0.0.1:5000`
 - 演算法編輯器：`http://127.0.0.1:5001`
-- 可選（儀表板 Edit 按鈕目標）：設定環境變數 `STL_EDITOR_URL`（預設：`https://stledit.gyke.net/`）
+- 可選（儀表板 Edit 按鈕目標）：設定環境變數 `STL_EDITOR_URL`（預設：`https://example.com/`）
 
 備註：
 
