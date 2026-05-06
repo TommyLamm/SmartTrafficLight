@@ -20,3 +20,8 @@ env/
 # Logs
 *.log
 
+ESP8266.ino
+ESP8266_WiFi_Bridge/ESP8266_WiFi_Bridge.ino
+project_features.txt
+project_operation_overview_public.txt
+project_operation_overview.txt

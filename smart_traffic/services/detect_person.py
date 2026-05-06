@@ -7,6 +7,7 @@ import smart_traffic.state as state
 from ..models import person_model
 from ..services.control import apply_person_control_logic
 from ..services.decode import decode_image
+from ..services.digital_twin import capture_snapshot
 from ..state import frame_condition_person, infer_lock, sys_state
 
 
@@ -26,10 +27,20 @@ def normalize_label(label):
 def classify_person_label(normalized_label):
     if normalized_label == "person":
         return "person"
-    if normalized_label in {"peoplewheelchair", "personwheelchair", "peopleinwheelchair", "personinwheelchair"}:
+    if normalized_label in {
+        "peoplewheelchair",
+        "personwheelchair",
+        "peopleinwheelchair",
+        "personinwheelchair",
+        "personwithwheelchair",
+        "pedestrianwheelchair",
+        "wheelchairperson",
+    }:
         return "people_wheelchair"
-    if normalized_label == "wheelchair":
+    if normalized_label in {"wheelchair", "wheelchairuser"}:
         return "wheelchair"
+    if "wheelchair" in normalized_label and ("person" in normalized_label or "people" in normalized_label):
+        return "people_wheelchair"
     return "ignore"
 
 
@@ -70,11 +81,15 @@ def process_person_data(obfuscated_bytes):
             elif label_type == "people_wheelchair":
                 p_count += 1
                 w_count += 1
-            # V2 的 wheelchair 代表空輪椅，不計入 Traffic Status，也不觸發輪椅優先
+            elif label_type == "wheelchair":
+                # Treat standalone wheelchair detections as wheelchair-user demand.
+                p_count += 1
+                w_count += 1
 
     sys_state["persons"] = p_count
     sys_state["wheelchairs"] = w_count
     apply_person_control_logic(p_count, w_count)
+    capture_snapshot("person")
 
     return {
         "cars": sys_state["cars"],

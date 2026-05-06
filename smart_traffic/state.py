@@ -1,3 +1,4 @@
+# smart_traffic/state.py  (diff: added plate stream fields + "plates" in sys_state)
 import hashlib
 import json
 import os
@@ -8,26 +9,30 @@ from collections import deque
 
 from .config import (
     CAR_LANE_REGION_COUNT,
-    LANE_BOUNDARY1_BOTTOM_RATIO,
-    LANE_BOUNDARY1_TOP_RATIO,
-    LANE_BOUNDARY2_BOTTOM_RATIO,
-    LANE_BOUNDARY2_TOP_RATIO,
+    LANE_SPLIT_BOTTOM_RATIO,
+    LANE_SPLIT_TOP_RATIO,
     STREAM_ONLINE_TTL_SEC,
     TIDAL_SAMPLE_WINDOW,
 )
 
 
+# ── live JPEG frame buffers ───────────────────────────────────────────────────
 latest_frame = None
 latest_frame_person = None
 latest_frame_car = None
+latest_frame_plate = None                         # ← NEW: plate-annotated frames
+
 latest_frame_ts_person = 0.0
 latest_frame_ts_car = 0.0
+latest_frame_ts_plate = 0.0                       # ← NEW
 
-frame_condition = threading.Condition()  # Backward-compatible alias for person stream
+frame_condition = threading.Condition()           # backward-compatible alias (person)
 frame_condition_person = frame_condition
 frame_condition_car = threading.Condition()
+frame_condition_plate = threading.Condition()     # ← NEW
 infer_lock = threading.Lock()
 
+# ── shared application state ──────────────────────────────────────────────────
 sys_state = {
     "persons": 0,
     "cars": 0,
@@ -36,19 +41,29 @@ sys_state = {
     "light_state": "UNKNOWN",
     "mode": "AUTO",
     "manual_override": None,
+    "manual_command": None,
     "last_manual_label": None,
     "detection": True,
     "lane_counts": [0] * CAR_LANE_REGION_COUNT,
-    "tidal_direction": "BALANCED"
+    "tidal_direction": "BALANCED",
+    "violations": [],
+    "plates": [],                                  # ← NEW: rolling OCR history
+    "emergency_priority_active": True,
+    "wheelchair_priority_active": True,
+    "emergency_phase": None,
+    "emergency_phase_until": 0.0,
+    "digital_twin_recording": False,
+    "digital_twin_frames": 0,
+    "digital_twin_started_at_ms": None,
+    "digital_twin_last_frame_ts_ms": None,
 }
 
+# ── lane-boundary state (2-lane split line) ──────────────────────────────────
 lane_sample_window = deque(maxlen=TIDAL_SAMPLE_WINDOW)
 lane_boundary_lock = threading.Lock()
 lane_boundaries = {
-    "boundary1_top": float(LANE_BOUNDARY1_TOP_RATIO),
-    "boundary1_bottom": float(LANE_BOUNDARY1_BOTTOM_RATIO),
-    "boundary2_top": float(LANE_BOUNDARY2_TOP_RATIO),
-    "boundary2_bottom": float(LANE_BOUNDARY2_BOTTOM_RATIO),
+    "boundary_top": float(LANE_SPLIT_TOP_RATIO),
+    "boundary_bottom": float(LANE_SPLIT_BOTTOM_RATIO),
 }
 lane_boundaries_revision = 1
 lane_boundaries_updated_at_ms = int(time.time() * 1000)
@@ -61,6 +76,7 @@ lane_boundaries_state_path = os.path.join(
 lane_boundaries_state_mtime_ns = 0
 
 
+# ── stream-online helpers ─────────────────────────────────────────────────────
 def is_stream_online(last_frame_ts, ttl_sec=STREAM_ONLINE_TTL_SEC):
     if last_frame_ts <= 0:
         return False
@@ -75,24 +91,33 @@ def is_car_stream_online(ttl_sec=STREAM_ONLINE_TTL_SEC):
     return is_stream_online(latest_frame_ts_car, ttl_sec)
 
 
-def _validate_boundary_payload(payload):
-    keys = ("boundary1_top", "boundary1_bottom", "boundary2_top", "boundary2_bottom")
-    parsed = {}
-    for key in keys:
-        if key not in payload:
-            raise ValueError(f"Missing lane boundary key: {key}")
-        try:
-            value = float(payload[key])
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Invalid lane boundary value for {key}") from exc
-        if value < 0.0 or value > 1.0:
-            raise ValueError(f"Lane boundary value out of range for {key}")
-        parsed[key] = value
+def is_plate_stream_online(ttl_sec=STREAM_ONLINE_TTL_SEC):     # ← NEW
+    return is_stream_online(latest_frame_ts_plate, ttl_sec)
 
-    if parsed["boundary1_top"] >= parsed["boundary2_top"]:
-        raise ValueError("boundary1_top must be smaller than boundary2_top")
-    if parsed["boundary1_bottom"] >= parsed["boundary2_bottom"]:
-        raise ValueError("boundary1_bottom must be smaller than boundary2_bottom")
+
+# ── lane-boundary helpers ─────────────────────────────────────────────────────
+def _validate_boundary_payload(payload):
+    # Backward compatibility: accept legacy boundary1_* payload and map to 2-lane keys.
+    aliases = {
+        "boundary_top": ("boundary_top", "boundary1_top"),
+        "boundary_bottom": ("boundary_bottom", "boundary1_bottom"),
+    }
+    parsed = {}
+    for canonical_key, candidates in aliases.items():
+        raw_value = None
+        for candidate in candidates:
+            if candidate in payload:
+                raw_value = payload[candidate]
+                break
+        if raw_value is None:
+            raise ValueError(f"Missing lane boundary key: {canonical_key}")
+        try:
+            value = float(raw_value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid lane boundary value for {canonical_key}") from exc
+        if value < 0.0 or value > 1.0:
+            raise ValueError(f"Lane boundary value out of range for {canonical_key}")
+        parsed[canonical_key] = value
 
     try:
         revision = int(payload.get("revision", 1))
@@ -108,11 +133,7 @@ def _validate_boundary_payload(payload):
     if updated_at_ms < 0:
         raise ValueError("lane boundary updated_at_ms must be >= 0")
 
-    return {
-        **parsed,
-        "revision": revision,
-        "updated_at_ms": updated_at_ms,
-    }
+    return {**parsed, "revision": revision, "updated_at_ms": updated_at_ms}
 
 
 def _read_lane_boundaries_from_disk():
@@ -145,25 +166,19 @@ def _write_lane_boundaries_to_disk_locked():
 
 
 def _refresh_lane_boundaries_from_disk_locked():
-    global lane_boundaries_revision
-    global lane_boundaries_updated_at_ms
-    global lane_boundaries_state_mtime_ns
-
+    global lane_boundaries_revision, lane_boundaries_updated_at_ms, lane_boundaries_state_mtime_ns
     try:
         disk_stat = os.stat(lane_boundaries_state_path)
     except FileNotFoundError:
         return
-
     if disk_stat.st_mtime_ns <= lane_boundaries_state_mtime_ns:
         return
-
     try:
         disk_payload = _read_lane_boundaries_from_disk()
     except (OSError, json.JSONDecodeError, ValueError) as exc:
         lane_boundaries_state_mtime_ns = disk_stat.st_mtime_ns
         print(f"[lane_boundaries] invalid persisted state ignored: {exc}")
         return
-
     lane_boundaries_state_mtime_ns = disk_stat.st_mtime_ns
     is_newer = (
         disk_payload["revision"] > lane_boundaries_revision
@@ -174,11 +189,10 @@ def _refresh_lane_boundaries_from_disk_locked():
     )
     if not is_newer:
         return
-
-    lane_boundaries["boundary1_top"] = disk_payload["boundary1_top"]
-    lane_boundaries["boundary1_bottom"] = disk_payload["boundary1_bottom"]
-    lane_boundaries["boundary2_top"] = disk_payload["boundary2_top"]
-    lane_boundaries["boundary2_bottom"] = disk_payload["boundary2_bottom"]
+    lane_boundaries.update({
+        "boundary_top": disk_payload["boundary_top"],
+        "boundary_bottom": disk_payload["boundary_bottom"],
+    })
     lane_boundaries_revision = disk_payload["revision"]
     lane_boundaries_updated_at_ms = disk_payload["updated_at_ms"]
 
@@ -194,11 +208,14 @@ def get_lane_boundaries():
 
 
 def set_lane_boundaries(new_values):
-    global lane_boundaries_revision
-    global lane_boundaries_updated_at_ms
+    global lane_boundaries_revision, lane_boundaries_updated_at_ms
     with lane_boundary_lock:
         _refresh_lane_boundaries_from_disk_locked()
-        lane_boundaries.update(new_values)
+        validated = _validate_boundary_payload({**lane_boundaries, **new_values})
+        lane_boundaries.update({
+            "boundary_top": validated["boundary_top"],
+            "boundary_bottom": validated["boundary_bottom"],
+        })
         lane_boundaries_revision += 1
         current_ms = int(time.time() * 1000)
         lane_boundaries_updated_at_ms = max(current_ms, lane_boundaries_updated_at_ms + 1)

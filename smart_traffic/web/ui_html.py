@@ -7,25 +7,39 @@ INDEX_HTML = """
         <title>Traffic Live Feed Dashboard</title>
         <style>
             body { 
-                background-color: #0b1121; color: #94a3b8; margin: 0; padding: 2rem; 
+                background: radial-gradient(circle at top, #1a2743 0%, #0b1121 46%, #070b16 100%);
+                color: #94a3b8;
+                margin: 0;
+                padding: 2rem;
+                min-height: 100vh;
                 font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             }
             .main-container {
-                max-width: 1200px; margin: 0 auto; background-color: #171e2e; 
-                padding: 20px; display: grid; grid-template-columns: 2fr 1fr; gap: 20px; 
-                border-radius: 6px; border: 1px solid #1e293b; position: relative;
+                max-width: 1360px;
+                margin: 0 auto;
+                background: linear-gradient(180deg, rgba(23, 30, 46, 0.96) 0%, rgba(15, 23, 42, 0.95) 100%);
+                padding: 22px;
+                display: grid;
+                grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr);
+                gap: 22px;
+                border-radius: 12px;
+                border: 1px solid #23314a;
+                position: relative;
+                box-shadow: 0 20px 45px rgba(2, 6, 23, 0.45);
             }
 
-            .panel-title { color: #38bdf8; font-size: 1.1rem; font-weight: bold; margin-bottom: 15px; }
-            .video-section { padding-top: 5px; }
+            .panel-title { color: #38bdf8; font-size: 1.1rem; font-weight: 700; margin-bottom: 15px; letter-spacing: 0.01em; }
+            .video-section { padding-top: 5px; min-width: 0; }
             .video-grid {
                 display: grid;
                 grid-template-columns: 1fr 1fr;
                 gap: 12px;
             }
             .camera-card {
-                background-color: #27344a;
-                border-radius: 6px;
+                background: linear-gradient(180deg, #2a3953 0%, #24344d 100%);
+                border-radius: 10px;
+                border: 1px solid #3b4f6d;
+                box-shadow: 0 6px 20px rgba(2, 6, 23, 0.2);
                 padding: 10px;
             }
             .camera-title {
@@ -39,7 +53,8 @@ INDEX_HTML = """
                 width: 100%;
                 /* Fixed aspect-ratio removed, adapts to image */
                 min-height: 240px;
-                border-radius: 4px; 
+                border-radius: 6px;
+                border: 1px solid #475569;
                 display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden;
             }
             .video-box img { width: 100%; height: auto; display: block; position: relative; z-index: 2; }
@@ -61,8 +76,7 @@ INDEX_HTML = """
                 stroke-width: 2.5;
                 filter: drop-shadow(0px 0px 3px rgba(0,0,0,0.8));
             }
-            #laneLine1 { stroke: #38bdf8; }
-            #laneLine2 { stroke: #f43f5e; }
+            #laneSplitLine { stroke: #38bdf8; }
             .lane-tuning-container {
                 margin-top: 15px;
                 background-color: rgba(15, 23, 42, 0.4);
@@ -102,68 +116,313 @@ INDEX_HTML = """
                 color: #94a3b8;
                 transition: transform 0.2s ease;
             }
-            details:not([open]) > .lane-tuning-header::after {
-                transform: rotate(-90deg);
-            }
-            .lane-slider-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+            details:not([open]) > .lane-tuning-header::after { transform: rotate(-90deg); }
+            .lane-slider-grid { display: grid; grid-template-columns: 1fr; gap: 15px; }
             .lane-slider-col { display: flex; flex-direction: column; }
             .lane-slider-title { font-size: 0.8rem; font-weight: bold; margin-bottom: 8px; }
             .lane-slider-item { display: flex; flex-direction: column; gap: 5px; }
             .lane-slider-head { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #94a3b8; font-weight: 500;}
             .lane-slider-head span:last-child { color: #f8fafc; font-variant-numeric: tabular-nums; background: #334155; padding: 2px 6px; border-radius: 4px;}
-            
-            .lane-slider-item input[type="range"] { 
-                width: 100%; 
-                margin: 0;
-            }
-            .left-boundary-slider input[type="range"] { accent-color: #38bdf8; }
-            .right-boundary-slider input[type="range"] { accent-color: #f43f5e; }
+            .lane-slider-item input[type="range"] { width: 100%; margin: 0; }
+            .split-boundary-slider input[type="range"] { accent-color: #38bdf8; }
             .lane-boundary-status { margin-top: 12px; font-size: 0.75rem; color: #94a3b8; min-height: 1.2em; text-align: right;}
 
-            .side-panels { display: flex; flex-direction: column; gap: 15px; }
-            
-            /* RWD for Mobile */
-            @media (max-width: 768px) {
-                body { padding: 10px; }
-                .main-container { 
-                    grid-template-columns: 1fr; 
-                    padding: 10px;
-                }
-                .video-grid {
-                    grid-template-columns: 1fr;
-                }
-                .lane-slider-grid {
-                    grid-template-columns: 1fr;
-                }
-                .video-box {
-                    /* On mobile, auto height based on width */
-                    height: auto;
-                }
-                .settings-button {
-                    top: 15px; right: 15px;
-                    padding: 8px 12px;
-                }
+            .side-panels {
+                display: flex;
+                flex-direction: column;
+                gap: 15px;
+                min-width: 0;
+                position: sticky;
+                top: 22px;
+                align-self: start;
             }
 
-            .panel { background-color: #27344a; padding: 20px; border-radius: 6px; }
-            .panel h3 { color: #5bc2fb; margin-top: 0; margin-bottom: 10px; font-size: 1rem; }
+            /* ===== VIOLATIONS PANEL ===== */
+            .violations-section {
+                margin-top: 20px;
+            }
+            .violations-header {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                margin-bottom: 12px;
+            }
+            .violations-header .panel-title {
+                margin-bottom: 0;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+            }
+            .violations-badge {
+                background: #dc2626;
+                color: #fff;
+                font-size: 0.7rem;
+                font-weight: 700;
+                border-radius: 999px;
+                padding: 2px 8px;
+                min-width: 22px;
+                text-align: center;
+                line-height: 1.5;
+                letter-spacing: 0.02em;
+            }
+            .violations-clear-btn {
+                background: transparent;
+                border: 1px solid #475569;
+                color: #94a3b8;
+                border-radius: 4px;
+                padding: 4px 10px;
+                font-size: 0.75rem;
+                cursor: pointer;
+                transition: 0.15s;
+            }
+            .violations-clear-btn:hover { border-color: #f87171; color: #f87171; }
+
+            .violations-grid {
+                display: grid;
+                grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+                gap: 12px;
+            }
+            .violation-card {
+                background: #1e2d45;
+                border: 1px solid #2d3f59;
+                border-radius: 6px;
+                overflow: hidden;
+                cursor: pointer;
+                transition: border-color 0.15s, box-shadow 0.15s;
+                position: relative;
+            }
+            .violation-card:hover {
+                border-color: #f43f5e;
+                box-shadow: 0 0 0 1px #f43f5e40, 0 4px 16px #0005;
+            }
+            .violation-thumb {
+                width: 100%;
+                aspect-ratio: 16/9;
+                object-fit: cover;
+                display: block;
+                background: #0f172a;
+            }
+            .violation-thumb-placeholder {
+                width: 100%;
+                aspect-ratio: 16/9;
+                background: #0f172a;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                color: #475569;
+                font-size: 1.6rem;
+            }
+            .violation-info {
+                padding: 8px 10px;
+            }
+            .violation-time {
+                font-size: 0.72rem;
+                color: #64748b;
+                margin-bottom: 2px;
+                font-variant-numeric: tabular-nums;
+            }
+            .violation-vehicles {
+                font-size: 0.8rem;
+                color: #cbd5e1;
+                font-weight: 600;
+            }
+            .violation-new-badge {
+                position: absolute;
+                top: 6px;
+                right: 6px;
+                background: #dc2626;
+                color: #fff;
+                font-size: 0.6rem;
+                font-weight: 700;
+                border-radius: 3px;
+                padding: 1px 5px;
+                letter-spacing: 0.05em;
+                text-transform: uppercase;
+            }
+            .violations-empty {
+                grid-column: 1 / -1;
+                text-align: center;
+                color: #475569;
+                padding: 32px 0;
+                font-size: 0.9rem;
+            }
+            .violations-empty .empty-icon { font-size: 2rem; margin-bottom: 8px; }
+
+            .violations-table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.85rem;
+                margin-top: 4px;
+            }
+            .violations-table thead tr {
+                background: #1e2d45;
+                color: #38bdf8;
+                text-align: left;
+            }
+            .violations-table th, .violations-table td {
+                padding: 10px 12px;
+                border-bottom: 1px solid #1e293b;
+            }
+        .violations-table tbody tr:hover { background: #1e2d45; }
+        .violations-table .plate-cell {
+            font-family: monospace;
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: #fbbf24;
+            letter-spacing: 0.05em;
+        }
+        .violations-table .plate-na { color: #475569; font-weight: normal; }
+        .violations-thumb-btn {
+            background: none;
+            border: 1px solid #334155;
+            border-radius: 4px;
+            cursor: pointer;
+            padding: 2px;
+            transition: border-color 0.15s;
+        }
+        .violations-thumb-btn:hover { border-color: #f43f5e; }
+        .violations-thumb-btn img {
+            width: 80px;
+            height: 45px;
+            object-fit: cover;
+            display: block;
+            border-radius: 2px;
+        }
+
+            /* ===== LIGHTBOX ===== */
+            .lightbox-overlay {
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(0,0,0,0.85);
+                z-index: 3000;
+                align-items: center;
+                justify-content: center;
+                flex-direction: column;
+                padding: 20px;
+            }
+            .lightbox-overlay.open { display: flex; }
+            .lightbox-img-wrap {
+                position: relative;
+                max-width: 90vw;
+                max-height: 80vh;
+            }
+            .lightbox-img-wrap img {
+                max-width: 90vw;
+                max-height: 75vh;
+                border-radius: 6px;
+                box-shadow: 0 0 60px #000a;
+                display: block;
+            }
+            .lightbox-close {
+                position: absolute;
+                top: -36px;
+                right: 0;
+                background: transparent;
+                border: none;
+                color: #fff;
+                font-size: 1.5rem;
+                cursor: pointer;
+                opacity: 0.8;
+            }
+            .lightbox-close:hover { opacity: 1; }
+            .lightbox-meta {
+                margin-top: 12px;
+                text-align: center;
+                color: #94a3b8;
+                font-size: 0.85rem;
+            }
+            .lightbox-meta strong { color: #f43f5e; }
+
+            /* RWD */
+            @media (max-width: 768px) {
+                body { padding: 10px; }
+                .main-container { grid-template-columns: 1fr; padding: 10px; }
+                .video-grid { grid-template-columns: 1fr; }
+                .lane-slider-grid { grid-template-columns: 1fr; }
+                .violations-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+                .settings-button { top: 15px; right: 15px; padding: 8px 12px; }
+                .side-panels { position: static; top: auto; }
+            }
+
+            .panel {
+                background: linear-gradient(180deg, #283955 0%, #22324b 100%);
+                border: 1px solid #3a4f6f;
+                box-shadow: 0 8px 20px rgba(2, 6, 23, 0.25);
+                padding: 20px;
+                border-radius: 10px;
+            }
+            .panel h3 { color: #7dd3fc; margin-top: 0; margin-bottom: 10px; font-size: 1rem; }
             .panel p { margin: 0; color: #cbd5e1; font-size: 0.95rem; }
             .dot { color: #4ade80; margin-right: 5px; font-size: 1.2rem; }
+            .dt-box { margin-top: 12px; padding: 10px; border-radius: 6px; border: 1px solid #334155; background: #0f172a; }
+            .dt-status { color: #cbd5e1; font-size: 0.85rem; margin-bottom: 8px; }
+            .dt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+            .dt-btn { padding: 8px 10px; border-radius: 4px; border: 1px solid #38bdf8; background: #0f172a; color: #38bdf8; cursor: pointer; font-weight: 600; font-size: 0.8rem; }
+            .dt-btn:hover { background: #38bdf8; color: #0f172a; }
+            .dt-btn.stop { border-color: #f87171; color: #fca5a5; }
+            .dt-btn.stop:hover { background: #f87171; color: #450a0a; }
+            .dt-btn.run { border-color: #4ade80; color: #86efac; }
+            .dt-btn.run:hover { background: #4ade80; color: #064e3b; }
+            .dt-compare { margin-top: 8px; padding-top: 8px; border-top: 1px solid #1e293b; }
+            .dt-result { margin-top: 8px; font-size: 0.78rem; color: #93c5fd; line-height: 1.35; white-space: pre-line; }
 
-            /* Interactive Mode Buttons */
-            .controls-row { display: flex; justify-content: space-between; gap:10px; margin-bottom: 15px; }
-            .btn-mode { padding: 10px; border-radius: 4px; width: 48%; cursor: pointer; border: none; font-weight: bold; transition: 0.2s;}
+            .controls-row { display: flex; justify-content: space-between; gap: 10px; margin-bottom: 15px; }
+            .btn-mode { padding: 10px; border-radius: 6px; flex: 1; cursor: pointer; border: none; font-weight: bold; transition: 0.2s; }
             .active-auto { background-color: #4ade80; color: #064e3b; }
             .active-manual { background-color: #f87171; color: #450a0a; }
             .inactive { background-color: #334155; color: #94a3b8; border: 1px solid #475569; }
             
             /* Manual Override Commands */
             .manual-actions { display: none; gap: 10px; justify-content: space-between; }
-            .btn-action { padding: 8px; border-radius: 4px; border: 1px solid #38bdf8; background: #0f172a; color: #38bdf8; cursor: pointer; width: 48%; font-weight:bold;}
+            .btn-action { padding: 8px; border-radius: 6px; border: 1px solid #38bdf8; background: #0f172a; color: #38bdf8; cursor: pointer; flex: 1; font-weight: bold; }
             .btn-action:hover { background: #38bdf8; color: #0f172a; }
 
-            .btn-detect-on  { background-color: #f87171; color: #450a0a; width: 100%; padding: 10px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
-            .btn-detect-off { background-color: #4ade80; color: #064e3b; width: 100%; padding: 10px; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+            .btn-detect-on  { background-color: #f87171; color: #450a0a; width: 100%; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+            .btn-detect-off { background-color: #4ade80; color: #064e3b; width: 100%; padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+
+            .feature-row {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 10px 0;
+                border-bottom: 1px solid #1e293b;
+            }
+            .feature-row:last-of-type { border-bottom: none; }
+            .feature-label { font-size: 0.9rem; color: #cbd5e1; }
+            .feature-sub { font-size: 0.75rem; color: #64748b; margin-top: 2px; }
+            .toggle-switch { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
+            .toggle-switch input { opacity: 0; width: 0; height: 0; }
+            .toggle-track {
+                position: absolute; inset: 0;
+                background-color: #334155;
+                border-radius: 9999px;
+                cursor: pointer;
+                transition: background-color 0.2s;
+            }
+            .toggle-track::before {
+                content: "";
+                position: absolute;
+                height: 18px; width: 18px;
+                left: 3px; bottom: 3px;
+                background-color: #fff;
+                border-radius: 50%;
+                transition: transform 0.2s;
+            }
+            .toggle-switch input:checked + .toggle-track { background-color: #4ade80; }
+            .toggle-switch input:checked + .toggle-track::before { transform: translateX(20px); }
+            .emergency-badge {
+                display: none;
+                margin-top: 8px;
+                border-radius: 4px;
+                padding: 8px 10px;
+                font-size: 0.82rem;
+                font-weight: 700;
+            }
+            .emergency-badge.phase-yellow { background: #854d0e; color: #fef08a; display: block; }
+            .emergency-badge.phase-allred { background: #7f1d1d; color: #fca5a5; display: block; }
+            .emergency-badge.phase-hold   { background: #991b1b; color: #fecaca; display: block; animation: pulse 1s infinite; }
+            @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.7; } }
 
             ul { margin: 0; padding-left: 20px; color: #cbd5e1; font-size: 0.95rem; }
             li { margin-bottom: 5px; }
@@ -231,6 +490,23 @@ INDEX_HTML = """
                 cursor: pointer;
                 font-size: 16px;
             }
+            .editor-load-error {
+                display: none;
+                align-items: center;
+                justify-content: space-between;
+                gap: 10px;
+                padding: 10px 12px;
+                background: #5b1d1d;
+                color: #fca5a5;
+                border-top: 1px solid #7f1d1d;
+                font-size: 13px;
+            }
+            .editor-load-error a {
+                color: #93c5fd;
+                text-decoration: underline;
+                font-weight: 600;
+                white-space: nowrap;
+            }
         </style>
     </head>
     <body>
@@ -247,10 +523,14 @@ INDEX_HTML = """
             </div>
             <iframe
               id="editor-frame"
-              data-src="https://stledit.gyke.net/"
-              style="width:100%;height:100%;border:none;"
+              data-src="{{ editor_url | e }}"
+              style="width:100%;flex:1;border:none;"
               title="Logic Editor"
             ></iframe>
+            <div id="editor-load-error" class="editor-load-error">
+              <span>Editor not reachable. Check editor URL or open in a new tab.</span>
+              <a id="editor-open-link" href="#" target="_blank" rel="noopener noreferrer">Open editor</a>
+            </div>
           </div>
         </div>
 
@@ -264,8 +544,7 @@ INDEX_HTML = """
                             <div class="placeholder">Car Detection Stream</div>
                             <img id="streamImgCar" alt="" style="display:none;">
                             <svg id="laneOverlay" class="lane-overlay" viewBox="0 0 100 100" preserveAspectRatio="none">
-                                <line id="laneLine1" x1="43" y1="0" x2="33" y2="100"></line>
-                                <line id="laneLine2" x1="57" y1="0" x2="66" y2="100"></line>
+                                <line id="laneSplitLine" x1="50" y1="0" x2="49.5" y2="100"></line>
                             </svg>
                         </div>
                         
@@ -273,25 +552,14 @@ INDEX_HTML = """
                             <summary class="lane-tuning-header">Lane Boundaries Tuning</summary>
                             <div class="lane-slider-grid">
                                 <div class="lane-slider-col">
-                                    <div class="lane-slider-title" style="color: #38bdf8;">Left Line</div>
-                                    <div class="lane-slider-item left-boundary-slider">
-                                        <div class="lane-slider-head"><span>Top</span><span id="val-b1-top">0.430</span></div>
-                                        <input id="slider-b1-top" type="range" min="0.05" max="0.95" step="0.001">
+                                    <div class="lane-slider-title" style="color: #38bdf8;">Split Line</div>
+                                    <div class="lane-slider-item split-boundary-slider">
+                                        <div class="lane-slider-head"><span>Top</span><span id="val-b-top">0.500</span></div>
+                                        <input id="slider-b-top" type="range" min="0.05" max="0.95" step="0.001">
                                     </div>
-                                    <div class="lane-slider-item left-boundary-slider" style="margin-top: 10px;">
-                                        <div class="lane-slider-head"><span>Bottom</span><span id="val-b1-bottom">0.330</span></div>
-                                        <input id="slider-b1-bottom" type="range" min="0.05" max="0.95" step="0.001">
-                                    </div>
-                                </div>
-                                <div class="lane-slider-col">
-                                    <div class="lane-slider-title" style="color: #f43f5e;">Right Line</div>
-                                    <div class="lane-slider-item right-boundary-slider">
-                                        <div class="lane-slider-head"><span>Top</span><span id="val-b2-top">0.570</span></div>
-                                        <input id="slider-b2-top" type="range" min="0.05" max="0.95" step="0.001">
-                                    </div>
-                                    <div class="lane-slider-item right-boundary-slider" style="margin-top: 10px;">
-                                        <div class="lane-slider-head"><span>Bottom</span><span id="val-b2-bottom">0.660</span></div>
-                                        <input id="slider-b2-bottom" type="range" min="0.05" max="0.95" step="0.001">
+                                    <div class="lane-slider-item split-boundary-slider" style="margin-top: 10px;">
+                                        <div class="lane-slider-head"><span>Bottom</span><span id="val-b-bottom">0.495</span></div>
+                                        <input id="slider-b-bottom" type="range" min="0.05" max="0.95" step="0.001">
                                     </div>
                                 </div>
                             </div>
@@ -305,6 +573,32 @@ INDEX_HTML = """
                             <img id="streamImgPerson" alt="" style="display:none;">
                         </div>
                     </div>
+                </div>
+
+                <!-- ===== VIOLATIONS GALLERY ===== -->
+                <div class="violations-section">
+                    <div class="violations-header">
+                        <div class="panel-title">
+                            🚨 Captured Violations
+                            <span class="violations-badge" id="violations-count">0</span>
+                        </div>
+                        <button class="violations-clear-btn" onclick="clearViolationsUI()">Clear All</button>
+                    </div>
+                    <table class="violations-table" id="violations-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Plate Number</th>
+                                <th>Vehicles</th>
+                                <th>Photo</th>
+                            </tr>
+                        </thead>
+                        <tbody id="violations-tbody">
+                            <tr id="violations-empty-row">
+                                <td colspan="4" style="text-align:center; color:#475569; padding:24px;">No violations captured yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
 
@@ -340,10 +634,45 @@ INDEX_HTML = """
 
                 <div class="panel">
                     <h3>Advanced Features</h3>
-                    <ul>
-                        <li>Emergency Priority: OFF</li>
-                        <li>Pedestrian Extension: ON</li>
-                    </ul>
+                    <div class="feature-row">
+                        <div>
+                            <div class="feature-label">🚨 Emergency Priority</div>
+                            <div class="feature-sub">RFID trigger drives 3-phase hardware + web sync</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-emergency" checked onchange="toggleFeature('emergency')">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
+                    <div id="emergency-badge" class="emergency-badge"></div>
+                    <div class="feature-row" style="margin-top:8px;">
+                        <div>
+                            <div class="feature-label">♿ Wheelchair Priority</div>
+                            <div class="feature-sub">Green time = 10s + 10s × users (max 60s)</div>
+                        </div>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="toggle-wheelchair" checked onchange="toggleFeature('wheelchair')">
+                            <span class="toggle-track"></span>
+                        </label>
+                    </div>
+                    <div class="dt-box">
+                        <div class="dt-status" id="dt-status">Digital Twin: Idle</div>
+                        <div class="dt-actions">
+                            <button class="dt-btn run" onclick="startDigitalTwin()">⏺ Start Record</button>
+                            <button class="dt-btn stop" onclick="stopDigitalTwin()">⏹ Stop Record</button>
+                        </div>
+                        <div class="dt-compare">
+                            <div class="dt-actions">
+                                <button class="dt-btn" onclick="runWhatIf()">⚡ Run What-if</button>
+                                <button class="dt-btn" onclick="previewPlayback()">⏯ Playback</button>
+                            </div>
+                            <div class="dt-actions" style="margin-top:8px;">
+                                <button class="dt-btn" onclick="clearDigitalTwin()">🧹 Clear</button>
+                                <button class="dt-btn" onclick="refreshDigitalTwinSession()">🔄 Refresh</button>
+                            </div>
+                            <div class="dt-result" id="dt-result">No simulation yet.</div>
+                        </div>
+                    </div>
                 </div>
 
 
@@ -352,12 +681,8 @@ INDEX_HTML = """
 
         <script>
             let laneBoundaries = {
-                boundary1_top: 0.43,
-                boundary1_bottom: 0.33,
-                boundary2_top: 0.57,
-                boundary2_bottom: 0.66,
-                revision: 0,
-                updated_at_ms: 0
+                boundary_top: 0.5, boundary_bottom: 0.495,
+                revision: 0, updated_at_ms: 0
             };
             let laneBoundaryPostTimer = null;
             let laneBoundarySyncTimer = null;
@@ -374,18 +699,29 @@ INDEX_HTML = """
                 el.style.color = isError ? '#f87171' : '#94a3b8';
             }
 
+            function normalizeLaneBoundaries(input) {
+                const source = input || {};
+                const fallbackTop = laneBoundaries.boundary_top;
+                const fallbackBottom = laneBoundaries.boundary_bottom;
+                const rawTop = source.boundary_top ?? source.boundary1_top ?? fallbackTop;
+                const rawBottom = source.boundary_bottom ?? source.boundary1_bottom ?? fallbackBottom;
+                const parsedTop = Number(rawTop);
+                const parsedBottom = Number(rawBottom);
+                return {
+                    boundary_top: Number.isFinite(parsedTop) ? parsedTop : fallbackTop,
+                    boundary_bottom: Number.isFinite(parsedBottom) ? parsedBottom : fallbackBottom,
+                    revision: Number(source.revision || 0),
+                    updated_at_ms: Number(source.updated_at_ms || 0),
+                };
+            }
+
             function applyLaneOverlay(boundaries) {
-                const line1 = document.getElementById('laneLine1');
-                const line2 = document.getElementById('laneLine2');
-                if (!line1 || !line2) return;
-                line1.setAttribute('x1', boundaries.boundary1_top * 100);
-                line1.setAttribute('y1', 0);
-                line1.setAttribute('x2', boundaries.boundary1_bottom * 100);
-                line1.setAttribute('y2', 100);
-                line2.setAttribute('x1', boundaries.boundary2_top * 100);
-                line2.setAttribute('y1', 0);
-                line2.setAttribute('x2', boundaries.boundary2_bottom * 100);
-                line2.setAttribute('y2', 100);
+                const splitLine = document.getElementById('laneSplitLine');
+                if (!splitLine) return;
+                splitLine.setAttribute('x1', boundaries.boundary_top * 100);
+                splitLine.setAttribute('y1', 0);
+                splitLine.setAttribute('x2', boundaries.boundary_bottom * 100);
+                splitLine.setAttribute('y2', 100);
             }
 
             function nowMs() {
@@ -404,10 +740,8 @@ INDEX_HTML = """
 
             function syncSliderUI(boundaries) {
                 const mappings = [
-                    ['boundary1_top', 'slider-b1-top', 'val-b1-top'],
-                    ['boundary1_bottom', 'slider-b1-bottom', 'val-b1-bottom'],
-                    ['boundary2_top', 'slider-b2-top', 'val-b2-top'],
-                    ['boundary2_bottom', 'slider-b2-bottom', 'val-b2-bottom']
+                    ['boundary_top', 'slider-b-top', 'val-b-top'],
+                    ['boundary_bottom', 'slider-b-bottom', 'val-b-bottom']
                 ];
                 mappings.forEach(([key, sliderId, valueId]) => {
                     const slider = document.getElementById(sliderId);
@@ -420,20 +754,18 @@ INDEX_HTML = """
 
             function currentSliderBoundaries() {
                 return {
-                    boundary1_top: Number(document.getElementById('slider-b1-top').value),
-                    boundary1_bottom: Number(document.getElementById('slider-b1-bottom').value),
-                    boundary2_top: Number(document.getElementById('slider-b2-top').value),
-                    boundary2_bottom: Number(document.getElementById('slider-b2-bottom').value)
+                    boundary_top: Number(document.getElementById('slider-b-top').value),
+                    boundary_bottom: Number(document.getElementById('slider-b-bottom').value)
                 };
             }
 
             function validateBoundaries(boundaries) {
-                if (boundaries.boundary1_top >= boundaries.boundary2_top) {
-                    return 'Boundary 1 Top 必須小於 Boundary 2 Top';
-                }
-                if (boundaries.boundary1_bottom >= boundaries.boundary2_bottom) {
-                    return 'Boundary 1 Bottom 必須小於 Boundary 2 Bottom';
-                }
+                if (!Number.isFinite(boundaries.boundary_top) || !Number.isFinite(boundaries.boundary_bottom))
+                    return 'Invalid boundary value format';
+                if (boundaries.boundary_top < 0 || boundaries.boundary_top > 1)
+                    return 'Boundary Top must be between 0 and 1';
+                if (boundaries.boundary_bottom < 0 || boundaries.boundary_bottom > 1)
+                    return 'Boundary Bottom must be between 0 and 1';
                 return null;
             }
 
@@ -451,15 +783,12 @@ INDEX_HTML = """
                 })
                 .then(r => r.json())
                 .then(data => {
-                    if (!data.success) {
-                        setLaneBoundaryStatus(data.error || '更新失敗', true);
-                        return;
-                    }
-                    laneBoundaries = data.lane_boundaries;
+                    if (!data.success) { setLaneBoundaryStatus(data.error || 'Update failed', true); return; }
+                    laneBoundaries = normalizeLaneBoundaries(data.lane_boundaries);
                     syncSliderUI(laneBoundaries);
-                    setLaneBoundaryStatus('Boundary 已套用（即時）');
+                    setLaneBoundaryStatus('Boundary applied (live)');
                 })
-                .catch(() => setLaneBoundaryStatus('網路錯誤，更新失敗', true));
+                .catch(() => setLaneBoundaryStatus('Network error, update failed', true));
             }
 
             function scheduleLaneBoundaryUpdate() {
@@ -473,25 +802,23 @@ INDEX_HTML = """
             }
 
             function bindLaneBoundarySliders() {
-                ['slider-b1-top', 'slider-b1-bottom', 'slider-b2-top', 'slider-b2-bottom']
-                    .forEach(id => {
-                        const el = document.getElementById(id);
-                        if (!el) return;
-                        el.addEventListener('input', scheduleLaneBoundaryUpdate);
-                    });
+                ['slider-b-top', 'slider-b-bottom'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.addEventListener('input', scheduleLaneBoundaryUpdate);
+                });
             }
 
             function loadLaneBoundaries() {
                 fetch(`/lane_boundaries?t=${Date.now()}`, { cache: 'no-store' })
                     .then(r => r.json())
                     .then(data => {
-                        laneBoundaries = data;
+                        laneBoundaries = normalizeLaneBoundaries(data);
                         syncSliderUI(laneBoundaries);
-                        setLaneBoundaryStatus(`Boundary 已載入（rev ${data.revision || 0}）`);
+                        setLaneBoundaryStatus(`Boundary loaded (rev ${laneBoundaries.revision || 0})`);
                     })
                     .catch(() => {
                         syncSliderUI(laneBoundaries);
-                        setLaneBoundaryStatus('Boundary 載入失敗，使用預設值', true);
+                        setLaneBoundaryStatus('Boundary load failed, using defaults', true);
                     });
             }
 
@@ -499,23 +826,107 @@ INDEX_HTML = """
                 fetch(`/lane_boundaries?t=${Date.now()}`, { cache: 'no-store' })
                     .then(r => r.json())
                     .then(data => {
-                        if (!data || typeof data.revision !== 'number') return;
-                        const isNewer = isBoundaryStateNewer(data, laneBoundaries);
+                        if (!data) return;
+                        const normalized = normalizeLaneBoundaries(data);
+                        const isNewer = isBoundaryStateNewer(normalized, laneBoundaries);
                         const isDragging = nowMs() < laneBoundaryDraggingUntil;
                         if (isNewer && !isDragging) {
-                            laneBoundaries = data;
+                            laneBoundaries = normalized;
                             syncSliderUI(laneBoundaries);
-                            setLaneBoundaryStatus(`Boundary 已同步（rev ${data.revision}）`);
+                            setLaneBoundaryStatus(`Boundary synced (rev ${laneBoundaries.revision})`);
                         }
                     })
                     .catch(() => {});
             }
 
             function startLaneBoundarySyncPolling() {
-                if (laneBoundarySyncTimer) {
-                    clearInterval(laneBoundarySyncTimer);
-                }
+                if (laneBoundarySyncTimer) clearInterval(laneBoundarySyncTimer);
                 laneBoundarySyncTimer = setInterval(pollLaneBoundariesForSync, 1000);
+            }
+
+            // ===== VIOLATIONS GALLERY =====
+            let knownViolationTimestamps = new Set();
+            let violationsUIList = [];   // local mirror, newest-first
+
+            function formatViolationTime(ts_ms) {
+                const d = new Date(ts_ms);
+                const pad = n => String(n).padStart(2, '0');
+                return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())} `
+                     + `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+            }
+
+            function openLightbox(filename, ts_ms, vehicleCount) {
+                const lb = document.getElementById('lightbox');
+                const img = document.getElementById('lightbox-img');
+                const meta = document.getElementById('lightbox-meta');
+                img.src = `/violation_image/${filename}`;
+                meta.innerHTML = `<strong>${vehicleCount} vehicle${vehicleCount !== 1 ? 's' : ''} detected</strong> &nbsp;·&nbsp; ${formatViolationTime(ts_ms)} &nbsp;·&nbsp; ${filename}`;
+                lb.classList.add('open');
+            }
+
+            function closeLightbox() {
+                document.getElementById('lightbox').classList.remove('open');
+                document.getElementById('lightbox-img').src = '';
+            }
+
+            function buildViolationRow(v, isNew) {
+                const tr = document.createElement('tr');
+                if (isNew) tr.style.animation = 'fadeIn 0.4s ease';
+
+                const plateHtml = (v.plate_text && v.plate_text !== 'N/A')
+                    ? `<span class="plate-cell">${v.plate_text}</span> <small style="color:#64748b">(${(v.plate_confidence*100).toFixed(0)}%)</small>`
+                    : `<span class="plate-cell plate-na">N/A</span>`;
+
+                tr.innerHTML = `
+                    <td style="white-space:nowrap; color:#cbd5e1">${formatViolationTime(v.timestamp)}</td>
+                    <td>${plateHtml}</td>
+                    <td style="color:#cbd5e1; text-align:center">${v.vehicles_detected}</td>
+                    <td>
+                        <button class="violations-thumb-btn" title="View full image"
+                            onclick="openLightbox('${v.filename}', ${v.timestamp}, ${v.vehicles_detected})">
+                            <img src="/violation_image/${v.filename}" alt="violation"
+                                 onerror="this.parentNode.innerHTML='📷'">
+                        </button>
+                    </td>
+                `;
+                return tr;
+            }
+
+            function renderViolationsGrid(newRecords) {
+                const tbody = document.getElementById('violations-tbody');
+                const countBadge = document.getElementById('violations-count');
+                if (!tbody) return;
+
+                newRecords.forEach(v => {
+                    if (knownViolationTimestamps.has(v.timestamp)) return;
+                    knownViolationTimestamps.add(v.timestamp);
+                    violationsUIList.unshift(v);
+
+                    document.getElementById('violations-empty-row')?.remove();
+                    tbody.insertBefore(buildViolationRow(v, true), tbody.firstChild);
+                });
+
+                countBadge.textContent = violationsUIList.length;
+            }
+
+            function clearViolationsUI() {
+                const tbody = document.getElementById('violations-tbody');
+                if (!tbody) return;
+                tbody.innerHTML = `<tr id="violations-empty-row"><td colspan="4" style="text-align:center; color:#475569; padding:24px;">No violations captured yet.</td></tr>`;
+                knownViolationTimestamps.clear();
+                violationsUIList = [];
+                document.getElementById('violations-count').textContent = '0';
+            }
+
+            function pollViolations() {
+                fetch(`/violations?t=${Date.now()}`, { cache: 'no-store' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data && Array.isArray(data.violations)) {
+                            renderViolationsGrid(data.violations);
+                        }
+                    })
+                    .catch(() => {});
             }
 
             function renderSystemMode(mode) {
@@ -546,7 +957,167 @@ INDEX_HTML = """
                 btn.className = 'btn-detect-off';
             }
 
-            // Live Update
+            function toggleFeature(feature) {
+                const url = feature === 'emergency'
+                    ? '/toggle_emergency'
+                    : '/toggle_wheelchair_priority';
+                fetch(url, { method: 'POST' })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (feature === 'emergency') {
+                            document.getElementById('toggle-emergency').checked = !!data.emergency_priority_active;
+                        } else {
+                            document.getElementById('toggle-wheelchair').checked = !!data.wheelchair_priority_active;
+                        }
+                    })
+                    .catch(err => console.error('Feature toggle error:', err));
+            }
+
+            function renderEmergencyBadge(phase) {
+                const badge = document.getElementById('emergency-badge');
+                if (!badge) return;
+                badge.className = 'emergency-badge';
+                badge.textContent = '';
+                if (phase === 'YELLOW_WARNING') {
+                    badge.className += ' phase-yellow';
+                    badge.textContent = '⚠️ Phase 1/3 — Warning: preparing emergency sequence';
+                } else if (phase === 'ALL_RED_CLEAR') {
+                    badge.className += ' phase-allred';
+                    badge.textContent = '🔴 Phase 2/3 — All red clearing intersection';
+                } else if (phase === 'EMERGENCY_RED') {
+                    badge.className += ' phase-hold';
+                    badge.textContent = '🚨 Phase 3/3 — Emergency hold';
+                }
+            }
+
+            function renderDigitalTwinStatus(data) {
+                const statusEl = document.getElementById('dt-status');
+                if (!statusEl) return;
+                const recording = !!data.digital_twin_recording;
+                const frames = Number(data.digital_twin_frames || 0);
+                statusEl.textContent = recording
+                    ? `Digital Twin: Recording (${frames} frames)`
+                    : `Digital Twin: Idle (${frames} frames cached)`;
+                statusEl.style.color = recording ? '#86efac' : '#cbd5e1';
+            }
+
+            function startDigitalTwin() {
+                fetch('/digital_twin/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({max_frames: 1200})
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.success) throw new Error(data.error || 'start failed');
+                    const s = data.session;
+                    document.getElementById('dt-status').textContent =
+                        `Digital Twin: Recording (${s.frames_count} frames)`;
+                    document.getElementById('dt-result').textContent = 'Recording started.';
+                })
+                .catch(err => {
+                    document.getElementById('dt-result').textContent = `Start failed: ${err.message}`;
+                });
+            }
+
+            function stopDigitalTwin() {
+                fetch('/digital_twin/stop', {method: 'POST'})
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.success) throw new Error(data.error || 'stop failed');
+                        const s = data.session;
+                        document.getElementById('dt-status').textContent =
+                            `Digital Twin: Idle (${s.frames_count} frames cached)`;
+                        document.getElementById('dt-result').textContent =
+                            `Recording stopped. Frames: ${s.frames_count}`;
+                    })
+                    .catch(err => {
+                        document.getElementById('dt-result').textContent = `Stop failed: ${err.message}`;
+                    });
+            }
+
+            function clearDigitalTwin() {
+                fetch('/digital_twin/clear', {method: 'POST'})
+                    .then(r => r.json())
+                    .then(data => {
+                        if (!data.success) throw new Error(data.error || 'clear failed');
+                        document.getElementById('dt-status').textContent = 'Digital Twin: Idle (0 frames cached)';
+                        document.getElementById('dt-result').textContent = 'Recording cache cleared.';
+                    })
+                    .catch(err => {
+                        document.getElementById('dt-result').textContent = `Clear failed: ${err.message}`;
+                    });
+            }
+
+            function runWhatIf() {
+                fetch('/digital_twin/compare', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        strategies: ['baseline', 'pedestrian_first', 'vehicle_first', 'balanced_flow']
+                    })
+                })
+                .then(async r => {
+                    const data = await r.json();
+                    if (!r.ok || !data.success) throw new Error(data.error || 'compare failed');
+                    return data;
+                })
+                .then(data => {
+                    const winner = data.winner;
+                    const summary = data.strategies.slice(0, 4).map((s, idx) =>
+                        `${idx + 1}. ${s.strategy}  score=${s.demo_score}  delay=${s.total_delay_units}  switches=${s.switches}`
+                    ).join('\\n');
+                    document.getElementById('dt-result').textContent =
+                        `Winner: ${winner}\\nFrames used: ${data.frames_used}\\n${summary}`;
+                })
+                .catch(err => {
+                    document.getElementById('dt-result').textContent = `What-if failed: ${err.message}`;
+                });
+            }
+
+            function previewPlayback() {
+                fetch('/digital_twin/playback?limit=600', {cache: 'no-store'})
+                    .then(async r => {
+                        const data = await r.json();
+                        if (!r.ok || !data.success) throw new Error(data.error || 'playback failed');
+                        return data.playback;
+                    })
+                    .then(pb => {
+                        if (!pb.count) {
+                            document.getElementById('dt-result').textContent = 'Playback: no recorded points.';
+                            return;
+                        }
+                        const sec = (pb.duration_ms / 1000).toFixed(1);
+                        const first = pb.points[0];
+                        const last = pb.points[pb.points.length - 1];
+                        document.getElementById('dt-result').textContent =
+                            `Playback points: ${pb.count}\\nDuration: ${sec}s\\nStart: cars=${first.cars}, peds=${first.persons}\\nEnd: cars=${last.cars}, peds=${last.persons}\\nLast live state: ${last.light_state_live}`;
+                    })
+                    .catch(err => {
+                        document.getElementById('dt-result').textContent = `Playback failed: ${err.message}`;
+                    });
+            }
+
+            function refreshDigitalTwinSession() {
+                fetch('/digital_twin/session', {cache: 'no-store'})
+                    .then(async r => {
+                        const data = await r.json();
+                        if (!r.ok || !data.success) throw new Error(data.error || 'session failed');
+                        return data.session;
+                    })
+                    .then(s => {
+                        document.getElementById('dt-status').textContent = s.recording
+                            ? `Digital Twin: Recording (${s.frames_count} frames)`
+                            : `Digital Twin: Idle (${s.frames_count} frames cached)`;
+                        document.getElementById('dt-result').textContent =
+                            `Session refreshed.\\nFrames: ${s.frames_count}\\nDuration: ${(Number(s.duration_ms || 0) / 1000).toFixed(1)}s`;
+                    })
+                    .catch(err => {
+                        document.getElementById('dt-result').textContent = `Refresh failed: ${err.message}`;
+                    });
+            }
+
+            // ===== LIVE STATS POLL =====
             setInterval(() => {
                 fetch(`/stats?t=${Date.now()}`, { cache: 'no-store' })
                     .then(r => r.json())
@@ -556,11 +1127,14 @@ INDEX_HTML = """
                         document.getElementById('val-wheelchairs').innerText = data.wheelchairs || 0;
                         // Proper Mapping for UI Text
                         let uiState = "⏳ Awaiting AI Detection...";
-                        if(data.light_state === "PED_WHEELCHAIR") uiState = "♿ Wheelchair Priority (Extended)";
-                        else if(data.light_state === "CAR_GREEN") uiState = "🟢 Green - Vehicles (N/S)";
-                        else if(data.light_state === "PED_LONG") uiState = "🚶 Pedestrian (Extended)";
-                        else if(data.light_state === "PED_SHORT") uiState = "🚶 Pedestrian (Standard)";
-                        else if(data.light_state === "MANUAL_OVERRIDE") {
+                        if (data.light_state === "EMERGENCY_YELLOW") uiState = "⚠️ Emergency — Yellow Warning";
+                        else if (data.light_state === "EMERGENCY_ALL_RED") uiState = "🔴 Emergency — All Red Clear";
+                        else if (data.light_state === "EMERGENCY_RED") uiState = "🚨 Emergency — Hold";
+                        else if (data.light_state === "PED_WHEELCHAIR") uiState = "♿ Wheelchair Priority (Adaptive)";
+                        else if (data.light_state === "CAR_GREEN") uiState = "🟢 Green - Vehicles (N/S)";
+                        else if (data.light_state === "PED_LONG") uiState = "🚶 Pedestrian (Extended)";
+                        else if (data.light_state === "PED_SHORT") uiState = "🚶 Pedestrian (Standard)";
+                        else if (data.light_state === "MANUAL_OVERRIDE")
                             uiState = "⚠️ Manual Override: " + (data.last_manual_label || "Unknown");
                         }
                         
@@ -573,9 +1147,23 @@ INDEX_HTML = """
                             if (!isDragging && isBoundaryStateNewer(data.lane_boundaries, laneBoundaries)) {
                                 laneBoundaries = data.lane_boundaries;
                                 syncSliderUI(laneBoundaries);
-                                setLaneBoundaryStatus(`Boundary 已同步（rev ${laneBoundaries.revision}）`);
+                                setLaneBoundaryStatus(`Boundary synced (rev ${laneBoundaries.revision})`);
                             }
                         }
+
+                        // Sync violations from stats payload (avoids extra request)
+                        if (Array.isArray(data.violations)) {
+                            renderViolationsGrid(data.violations);
+                        }
+
+                        const chkEmergency = document.getElementById('toggle-emergency');
+                        const chkWheelchair = document.getElementById('toggle-wheelchair');
+                        if (chkEmergency && typeof data.emergency_priority_active === 'boolean')
+                            chkEmergency.checked = data.emergency_priority_active;
+                        if (chkWheelchair && typeof data.wheelchair_priority_active === 'boolean')
+                            chkWheelchair.checked = data.wheelchair_priority_active;
+                        renderEmergencyBadge(data.emergency_phase || null);
+                        renderDigitalTwinStatus(data);
 
                         renderDetectionButton(data.detection);
                     })
@@ -594,8 +1182,15 @@ INDEX_HTML = """
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({mode: mode})
                 })
-                .then(r => r.json())
-                .then(data => renderSystemMode(data.mode));
+                .then(async r => ({ ok: r.ok, data: await r.json() }))
+                .then(({ ok, data }) => {
+                    if (!ok || !data || !data.mode) {
+                        console.error('setMode failed', data);
+                        return;
+                    }
+                    renderSystemMode(data.mode);
+                })
+                .catch(err => console.error('setMode error', err));
             }
 
             function forceCommand(cmd, btn) {
@@ -606,12 +1201,22 @@ INDEX_HTML = """
                 fetch('/manual_override', {
                     method: 'POST', headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({command: cmd})
-                }).then(() => {
-                    btn.innerText = "Sent!";
-                    setTimeout(() => {
-                        btn.innerText = originalText;
-                        btn.disabled = false;
-                    }, 1000);
+                })
+                .then(async r => ({ ok: r.ok, data: await r.json() }))
+                .then(({ ok, data }) => {
+                    if (!ok || !data || data.success === false) {
+                        btn.innerText = "Failed";
+                        console.error('manual_override failed', data);
+                    } else {
+                        btn.innerText = "Sent!";
+                    }
+                    setTimeout(() => { btn.innerText = originalText; btn.disabled = false; }, 1200);
+                })
+                .catch(err => {
+                    btn.innerText = "Failed";
+                    btn.disabled = false;
+                    console.error('manual_override error', err);
+                    setTimeout(() => { btn.innerText = originalText; }, 1200);
                 });
             }
 
@@ -659,22 +1264,71 @@ INDEX_HTML = """
                 const editorModal = document.getElementById('editor-modal');
                 const editorClose = document.getElementById('editor-close');
                 const editorFrame = document.getElementById('editor-frame');
+                const editorLoadError = document.getElementById('editor-load-error');
+                const editorOpenLink = document.getElementById('editor-open-link');
+                if (settingsBtn && editorModal && editorClose && editorFrame && editorLoadError && editorOpenLink) {
+                    let editorLoadTimer = null;
+                    let editorFrameLoaded = false;
 
-                if (settingsBtn && editorModal && editorClose && editorFrame) {
+                    function clearEditorLoadTimer() {
+                        if (editorLoadTimer) {
+                            clearTimeout(editorLoadTimer);
+                            editorLoadTimer = null;
+                        }
+                    }
+
+                    function showEditorLoadError() {
+                        editorLoadError.style.display = 'flex';
+                    }
+
+                    function hideEditorLoadError() {
+                        editorLoadError.style.display = 'none';
+                    }
+
+                    function beginEditorLoadWatch() {
+                        clearEditorLoadTimer();
+                        editorLoadTimer = setTimeout(function () {
+                            if (!editorFrameLoaded) showEditorLoadError();
+                        }, 8000);
+                    }
+
+                    editorFrame.addEventListener('load', function () {
+                        editorFrameLoaded = true;
+                        clearEditorLoadTimer();
+                        hideEditorLoadError();
+                    });
+
+                    editorFrame.addEventListener('error', function () {
+                        editorFrameLoaded = false;
+                        clearEditorLoadTimer();
+                        showEditorLoadError();
+                    });
+
                     settingsBtn.addEventListener('click', function () {
-                        // 只在第一次打開時載入 iframe，避免每次都重新載入
-                        if (!editorFrame.src && editorFrame.dataset.src) {
-                            editorFrame.src = editorFrame.dataset.src;
+                        const editorUrl = (editorFrame.dataset.src || '').trim();
+                        if (!editorUrl) {
+                            showEditorLoadError();
+                            editorModal.style.display = 'flex';
+                            return;
+                        }
+
+                        editorOpenLink.href = editorUrl;
+                        hideEditorLoadError();
+
+                        if (editorFrame.src !== editorUrl || !editorFrameLoaded) {
+                            editorFrameLoaded = false;
+                            editorFrame.src = editorUrl;
+                            beginEditorLoadWatch();
                         }
                         editorModal.style.display = 'flex';
                     });
-
                     editorClose.addEventListener('click', function () {
+                        clearEditorLoadTimer();
                         editorModal.style.display = 'none';
                     });
-
                     editorModal.addEventListener('click', function (e) {
                         if (e.target === editorModal) {
+                            clearEditorLoadTimer();
                             editorModal.style.display = 'none';
                         }
                     });
